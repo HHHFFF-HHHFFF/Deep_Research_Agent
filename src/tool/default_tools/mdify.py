@@ -1,0 +1,163 @@
+"""提供mdify相关实现。"""
+
+import asyncio
+import os
+from typing import Any, Optional, Dict
+from pydantic import Field
+
+from src.tool.types import Tool, ToolResponse, ToolExtra
+from src.tool.default_tools.markdown.mdconvert import MarkitdownConverter
+from src.logger import logger
+from src.registry import TOOL
+
+_MDIFY_TOOL_DESCRIPTION = """Convert various file formats to markdown text using markitdown and save to base_dir folder.
+This tool converts files to markdown format and saves the converted markdown text to the base_dir folder for easy text processing and analysis.
+The input should be a file path (absolute path recommended) to the file you want to convert.
+
+Supported file formats:
+- Documents: PDF, DOCX, PPTX, XLSX, XLS, CSV, TXT, HTML, EPUB
+- Images: PNG, JPG, JPEG, GIF, BMP, TIFF, WEBP (with OCR text extraction)
+- Audio: MP3, WAV, MP4, M4A (with speech-to-text transcription)
+- Archives: ZIP (extracts and converts contents)
+- Data: IPYNB (Jupyter notebooks), RSS feeds
+- Email: MSG (Outlook messages)
+- Web: Wikipedia pages, YouTube videos (metadata and transcripts)
+- Plain text files
+
+The tool will extract text content, tables, metadata, and other structured information from these files, convert them into readable markdown format, and save the result as a .md file in the base_dir folder.
+
+Args:
+- file_path (str): The absolute path to the file to convert.
+- output_format (str): The output format.
+
+Example: {"name": "mdify", "args": {"file_path": "/path/to/file.pdf", "output_format": "markdown"}}.
+"""
+
+@TOOL.register_module(force=True)
+class MdifyTool(Tool):
+    """定义 `MdifyTool`，封装相关数据与行为。"""
+
+    name: str = "mdify"
+    description: str = _MDIFY_TOOL_DESCRIPTION
+    metadata: Dict[str, Any] = Field(default={}, description="The metadata of the tool")
+    require_grad: bool = Field(default=False, description="Whether the tool requires gradients")
+
+    timeout: int = Field(description="Timeout in seconds for file conversion", default=60)
+    converter: Optional[MarkitdownConverter] = None
+    base_dir: Optional[str] = Field(default=None, description="The base directory to use for the mdify tool.")
+
+    def __init__(self, base_dir: Optional[str] = None, require_grad: bool = False, **kwargs):
+        """初始化实例。"""
+        super().__init__(require_grad=require_grad, **kwargs)
+
+        if base_dir is not None:
+            self.base_dir = base_dir
+
+        if self.base_dir is not None:
+            os.makedirs(self.base_dir, exist_ok=True)
+        logger.info(f"| Mdify tool base directory: {self.base_dir}")
+
+    def model_post_init(self, __context: Any) -> None:
+        if self.converter is None:
+            self.converter = MarkitdownConverter(timeout=self.timeout)
+
+    async def __call__(self, file_path: str, output_format: str = "markdown", **kwargs) -> ToolResponse:
+        """执行组件调用并返回结果。"""
+        try:
+            # 校验输入与当前状态。
+            if not file_path.strip():
+                return ToolResponse(success=False, message="Error: Empty file path provided")
+
+            # 校验输入与当前状态。
+            if not os.path.exists(file_path):
+                return ToolResponse(success=False, message=f"Error: File not found: {file_path}")
+
+            # 校验输入与当前状态。
+            if not os.path.isfile(file_path):
+                return ToolResponse(success=False, message=f"Error: Path is not a file: {file_path}")
+
+            # 处理文件与路径。
+            file_size = os.path.getsize(file_path)
+            file_name = os.path.basename(file_path)
+            file_ext = os.path.splitext(file_path)[1].lower()
+
+            # 校验输入与当前状态。
+            max_size = 100 * 1024 * 1024  # 100MB
+            if file_size > max_size:
+                return ToolResponse(
+                    success=False, message=f"Error: File too large ({file_size / (1024*1024):.1f}MB). "
+                           f"Maximum allowed size is {max_size / (1024*1024)}MB"
+                )
+
+            # 加载所需数据。
+            loop = asyncio.get_event_loop()
+            result = await loop.run_in_executor(
+                None,
+                self._convert_file,
+                file_path,
+                output_format
+            )
+
+            if result is None:
+                return ToolResponse(success=False, message="Error: Conversion failed - unable to process the file")
+
+            # 持久化相关数据。
+            saved_path = None
+            if self.base_dir:
+                # 创建所需对象。
+                os.makedirs(self.base_dir, exist_ok=True)
+
+                # 组装并返回结果。
+                base_name = os.path.splitext(file_name)[0]
+                output_filename = f"{base_name}.md"
+                saved_path = os.path.join(self.base_dir, output_filename)
+
+                # 持久化相关数据。
+                with open(saved_path, 'w', encoding='utf-8') as f:
+                    f.write(result)
+
+                logger.info(f"| Saved converted markdown to: {saved_path}")
+
+            # 组装并返回结果。
+            response_content = f"Successfully converted file: {file_name}\n"
+            response_content += f"File size: {file_size / 1024:.1f} KB\n"
+            response_content += f"File extension: {file_ext}\n"
+            response_content += f"Output format: {output_format}\n"
+            if saved_path:
+                response_content += f"Saved to: {saved_path}\n"
+            response_content += result
+
+            message = response_content
+            logger.info(f"| ✅ Converted file {file_path} to {output_format} and saved to {saved_path}")
+            return ToolResponse(success=True, message=message, extra=ToolExtra(
+                file_path=saved_path,
+                data={
+                    "file_name": file_name,
+                    "file_size": file_size,
+                    "file_ext": file_ext,
+                    "output_format": output_format,
+                    "saved_path": saved_path
+                }
+            ))
+
+        except asyncio.TimeoutError:
+            return ToolResponse(success=False,
+                                message=f"Error: Conversion timed out after {self.timeout} seconds")
+        except Exception as e:
+            return ToolResponse(success=False,
+                                message=f"Error during conversion: {str(e)}")
+
+    def _convert_file(self, file_path: str, output_format: str) -> Optional[str]:
+        """实现 `_convert_file` 的业务逻辑。"""
+        try:
+            result = self.converter.convert(file_path)
+            if result and hasattr(result, 'markdown'):
+                return result.markdown
+            elif isinstance(result, str):
+                return result
+            else:
+                return None
+        except Exception as e:
+            # 处理异常情况。
+            logger.error(f"Conversion error: {e}")
+            return None
