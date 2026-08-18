@@ -1,32 +1,30 @@
+from __future__ import annotations
+
 from collections.abc import Mapping
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import httpx
 
-try:
+if TYPE_CHECKING:
     from openai import APIConnectionError, APIStatusError, AsyncOpenAI, RateLimitError
-    from openai.types.chat import ChatCompletionContentPartTextParam
+    from openai.types.chat import ChatCompletionMessageParam
     from openai.types.chat.chat_completion import ChatCompletion
-    from openai.types.shared.chat_model import ChatModel
-    from openai.types.shared_params.reasoning_effort import ReasoningEffort
-    from openai.types.shared_params.response_format_json_schema import (
-        JSONSchema,
-        ResponseFormatJSONSchema,
-    )
-except ImportError:
-    # 执行回退或重试逻辑。
-    AsyncOpenAI = None
-    APIConnectionError = Exception
-    APIStatusError = Exception
-    RateLimitError = Exception
-    ChatCompletion = dict
-    ChatModel = str
-    ReasoningEffort = str
-    JSONSchema = dict
-    ResponseFormatJSONSchema = dict
-    ChatCompletionContentPartTextParam = dict
 
-from typing import TYPE_CHECKING
+    from src.tool.types import Tool
+else:
+    try:
+        from openai import (
+            APIConnectionError,
+            APIStatusError,
+            AsyncOpenAI,
+            RateLimitError,
+        )
+    except ImportError:
+        # 仅在未安装 OpenAI SDK 时保留可导入的失败路径。
+        AsyncOpenAI = None
+        APIConnectionError = Exception
+        APIStatusError = Exception
+        RateLimitError = Exception
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -35,9 +33,6 @@ from src.message.types import Message
 from src.model.openai.serializer import OpenAIChatSerializer
 from src.model.types import LLMExtra, LLMResponse
 
-if TYPE_CHECKING:
-    from src.tool.types import Tool
-
 
 class ChatOpenAI(BaseModel):
     """定义 `ChatOpenAI`，封装相关数据与行为。"""
@@ -45,7 +40,7 @@ class ChatOpenAI(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="allow")
 
     # 配置相关参数。
-    model: ChatModel | str
+    model: str
 
     # 处理模型调用。
     temperature: float | None = 0.7
@@ -70,7 +65,7 @@ class ChatOpenAI(BaseModel):
     http_client: httpx.AsyncClient | None = None
     _strict_response_validation: bool = False
 
-    reasoning_models: list[ChatModel | str] | None = Field(
+    reasoning_models: list[str] | None = Field(
         default_factory=lambda: [
             "o3",
             "gpt-5",
@@ -84,7 +79,7 @@ class ChatOpenAI(BaseModel):
 
     def _get_client_params(self) -> dict[str, Any]:
         """实现 `_get_client_params` 的业务逻辑。"""
-        base_params = {
+        base_params: dict[str, Any] = {
             "api_key": self.api_key,
             "organization": self.organization,
             "project": self.project,
@@ -171,7 +166,7 @@ class ChatOpenAI(BaseModel):
     async def _build_params(
         self,
         messages: list[Message],
-        tools: list["Tool"] | None = None,
+        tools: list[Tool] | None = None,
         response_format: type[BaseModel] | BaseModel | dict | None = None,
         stream: bool = False,
         **kwargs: Any,
@@ -246,7 +241,7 @@ class ChatOpenAI(BaseModel):
 
     async def _call_model(
         self,
-        messages: list[dict[str, Any]],
+        messages: list[ChatCompletionMessageParam],
         **params: Any,
     ) -> ChatCompletion:
         """实现 `_call_model` 的业务逻辑。"""
@@ -262,7 +257,7 @@ class ChatOpenAI(BaseModel):
     async def __call__(
         self,
         messages: list[Message],
-        tools: list["Tool"] | None = None,
+        tools: list[Tool] | None = None,
         response_format: type[BaseModel] | BaseModel | dict | None = None,
         stream: bool = False,
         **kwargs: Any,
@@ -331,7 +326,7 @@ class ChatOpenAI(BaseModel):
     async def _format_response(
         self,
         response: ChatCompletion,
-        tools: list["Tool"] | None = None,
+        tools: list[Tool] | None = None,
         response_format: type[BaseModel] | BaseModel | dict | None = None,
     ) -> LLMResponse:
         """实现 `_format_response` 的业务逻辑。"""
@@ -361,7 +356,10 @@ class ChatOpenAI(BaseModel):
                 functions = []
 
                 for tool_call in message.tool_calls:
-                    function_info = tool_call.function
+                    function_info = getattr(tool_call, "function", None)
+                    if function_info is None:
+                        logger.warning("忽略不支持的自定义工具调用类型")
+                        continue
                     name = function_info.name
                     arguments_str = function_info.arguments
 

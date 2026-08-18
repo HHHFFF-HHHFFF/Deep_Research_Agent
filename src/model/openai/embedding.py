@@ -1,18 +1,26 @@
+from __future__ import annotations
+
 from collections.abc import Mapping
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
-try:
+if TYPE_CHECKING:
     from openai import APIConnectionError, APIStatusError, AsyncOpenAI, RateLimitError
-    from openai.types.shared.chat_model import ChatModel
-except ImportError:
-    # 执行回退或重试逻辑。
-    AsyncOpenAI = None
-    APIConnectionError = Exception
-    APIStatusError = Exception
-    RateLimitError = Exception
-    ChatModel = str
+else:
+    try:
+        from openai import (
+            APIConnectionError,
+            APIStatusError,
+            AsyncOpenAI,
+            RateLimitError,
+        )
+    except ImportError:
+        # 仅在未安装 OpenAI SDK 时保留可导入的失败路径。
+        AsyncOpenAI = None
+        APIConnectionError = Exception
+        APIStatusError = Exception
+        RateLimitError = Exception
 
 from pydantic import BaseModel, ConfigDict
 
@@ -27,7 +35,7 @@ class EmbeddingOpenAI(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="allow")
 
     # 配置相关参数。
-    model: ChatModel | str = "text-embedding-3-small"
+    model: str = "text-embedding-3-small"
 
     # 处理输入参数。
     api_key: str | None = None
@@ -52,7 +60,7 @@ class EmbeddingOpenAI(BaseModel):
 
     def _get_client_params(self) -> dict[str, Any]:
         """实现 `_get_client_params` 的业务逻辑。"""
-        base_params = {
+        base_params: dict[str, Any] = {
             "api_key": self.api_key,
             "organization": self.organization,
             "project": self.project,
@@ -161,18 +169,24 @@ class EmbeddingOpenAI(BaseModel):
     ) -> LLMResponse:
         """实现 `_format_response` 的业务逻辑。"""
         # 组装并返回结果。
-        embeddings = []
+        embeddings: list[list[float]] = []
         if hasattr(response, "data"):
             for item in response.data:
                 if hasattr(item, "embedding"):
-                    embeddings.append(item.embedding)
+                    embedding = item.embedding
                 elif isinstance(item, dict):
-                    embeddings.append(item.get("embedding"))
+                    embedding = item.get("embedding")
+                else:
+                    continue
+                if isinstance(embedding, list):
+                    embeddings.append(embedding)
         elif isinstance(response, dict):
             data = response.get("data", [])
             for item in data:
                 if isinstance(item, dict):
-                    embeddings.append(item.get("embedding"))
+                    embedding = item.get("embedding")
+                    if isinstance(embedding, list):
+                        embeddings.append(embedding)
 
         # 组装并返回结果。
         if len(embeddings) == 1:
@@ -239,30 +253,32 @@ class EmbeddingOpenAI(BaseModel):
             return LLMResponse(
                 success=False,
                 message=f"Rate limit error: {e.message}",
-                extra={"error": str(e), "model": self.name},
+                extra=LLMExtra(data={"error": str(e), "model": self.name}),
             )
         except APIConnectionError as e:
             logger.error(f"API connection error: {e}")
             return LLMResponse(
                 success=False,
                 message=f"API connection error: {e!s}",
-                extra={"error": str(e), "model": self.name},
+                extra=LLMExtra(data={"error": str(e), "model": self.name}),
             )
         except APIStatusError as e:
             logger.error(f"API status error: {e}")
             return LLMResponse(
                 success=False,
                 message=f"API status error: {e.message}",
-                extra={
-                    "error": str(e),
-                    "status_code": e.status_code,
-                    "model": self.name,
-                },
+                extra=LLMExtra(
+                    data={
+                        "error": str(e),
+                        "status_code": e.status_code,
+                        "model": self.name,
+                    }
+                ),
             )
         except Exception as e:
             logger.error(f"Unexpected error: {e}")
             return LLMResponse(
                 success=False,
                 message=f"Unexpected error: {e!s}",
-                extra={"error": str(e), "model": self.name},
+                extra=LLMExtra(data={"error": str(e), "model": self.name}),
             )
