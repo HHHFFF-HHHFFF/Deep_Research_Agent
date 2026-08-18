@@ -19,12 +19,12 @@ embedding_model_name = (
 embedding_fallback_models = []
 
 # 配置相关参数。
-memory_config = dict(
-    type = "general_memory_system",
-    model_name = model_name,
-    max_summaries = 20,
-    max_insights = 100
-)
+memory_config = {
+    "type": "general_memory_system",
+    "model_name": model_name,
+    "max_summaries": 20,
+    "max_insights": 100
+}
 
 # 模型最大输出长度。
 max_tokens = 16384
