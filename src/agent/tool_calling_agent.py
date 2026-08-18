@@ -328,7 +328,7 @@ class ToolCallingAgent(Agent):
             files = await asyncio.gather(
                 *[self._extract_file_content(file) for file in files]
             )
-            enhanced_task = await self._generate_enhanced_task(task, files)
+            enhanced_task = await self._generate_enhanced_task(task, files, ctx=ctx)
         else:
             enhanced_task = task
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 from enum import Enum
+from pathlib import Path
 from typing import Any
 
 import pandas as pd
@@ -14,7 +15,7 @@ from src.config import config
 from src.dynamic import dynamic_manager
 from src.logger import logger
 from src.memory.types import EventType
-from src.message.types import HumanMessage, Message, SystemMessage
+from src.message.types import Message
 from src.session import SessionContext
 from src.utils import (
     dedent,
@@ -275,8 +276,7 @@ class Agent(BaseModel):
         return self.__str__()
 
     async def _extract_file_content(self, file: str) -> dict[str, Any]:
-        """实现 `_extract_file_content` 的业务逻辑。"""
-        from src.model import model_manager
+        """将本地文件转换为可供 RAG 切分的 Markdown 文本。"""
         from src.tool.server import tcp
 
         info = get_file_info(file)
@@ -290,45 +290,55 @@ class Agent(BaseModel):
             },
         }
         tool_response = await tcp(**input_payload)
+        if not tool_response.success:
+            raise RuntimeError(f"本地文件解析失败：{tool_response.message}")
         file_content = tool_response.message
-
-        # 处理模型调用。
-        system_prompt = "You are a helpful assistant that summarizes file content."
-
-        user_prompt = dedent(
-            f"""
-            Summarize the following file content as 1-3 sentences:
-            {file_content}
-        """
-        )
-
-        messages = [
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=user_prompt),
-        ]
-
-        model_response = await model_manager(model=self.model_name, messages=messages)
-
+        if not file_content or not file_content.strip():
+            raise RuntimeError("本地文件解析结果为空")
         info["content"] = file_content
-        info["summary"] = model_response.message
 
         return info
 
     async def _generate_enhanced_task(
-        self, task: str, files: list[dict[str, Any]]
+        self,
+        task: str,
+        files: list[dict[str, Any]],
+        ctx: SessionContext | None = None,
     ) -> str:
-        """实现 `_generate_enhanced_task` 的业务逻辑。"""
-
-        attach_files_string = "\n".join(
-            [f"File: {file['path']}\nSummary: {file['summary']}" for file in files]
+        """检索本地文件，并把相关片段加入研究任务。"""
+        from src.document_retriever import (
+            LocalDocumentRetriever,
+            format_local_context,
         )
+        from src.model import model_manager
+
+        session_id = ctx.id if ctx else str(uuid.uuid4())
+        retriever = LocalDocumentRetriever(
+            base_dir=Path(self.workdir) / "rag" / session_id,
+            embedding_model_name=model_manager.embedding_model_name,
+        )
+        try:
+            await retriever.index_documents(files)
+            chunks = await retriever.retrieve(task, k=4)
+        finally:
+            await retriever.close()
+
+        if not chunks:
+            raise RuntimeError("本地文档没有检索到与研究主题相关的内容")
+
+        file_names = "、".join(
+            Path(str(file.get("path", "本地文档"))).name for file in files
+        )
+        local_context = format_local_context(chunks)
 
         enhanced_task = dedent(
             f"""
-            - Task:
+            - 研究任务：
             {task}
-            - Attach files:
-            {attach_files_string}
+            - 本地资料：
+            {file_names}
+            - 检索到的本地证据：
+            {local_context}
         """
         )
         return enhanced_task

@@ -24,12 +24,13 @@
 - 动态研究主题输入
 - Qwen／DeepSeek 聊天模型切换
 - 独立 Embedding 配置和备用模型降级
-- 工具型 Agent、网页研究、报告生成和 FAISS 基础模块
+- 工具型 Agent、网页研究和报告生成
+- 本地文档切分、去重、Qwen Embedding、FAISS Top-K 检索与索引落盘
 - P1-M1 全仓 Ruff 规范清理
 - P1-M2a 至 P1-M2d 的高价值类型修复
 - 命令行研究入口
 
-下一步是从现有命令行提取一个轻量异步调用函数，然后增加单页 Streamlit 界面。原应用服务层和平台化计划已取消。
+下一步是从现有命令行提取一个轻量异步调用函数，然后增加单页 Streamlit 界面和文件上传控件。原应用服务层和平台化计划已取消。
 
 ## 技术栈
 
@@ -50,6 +51,8 @@
 ```text
 研究主题／可选文档
         ↓
+文档解析 → 切分 → Embedding → FAISS Top-K
+        ↓
 工具型 Agent
         ↓
 搜索 → 抓取 → 分析 → 报告
@@ -67,6 +70,7 @@ docs/          项目范围、技术需求和开发计划
 examples/      当前命令行入口
 src/
   application/ 研究输入校验
+  document_retriever.py 本地文档切分与 FAISS 检索
   agent/       工具型 Agent 执行循环
   model/       Qwen／DeepSeek 等模型适配与降级
   tool/        搜索、文档分析和报告工具
@@ -126,6 +130,17 @@ python examples/run_tool_calling_agent.py --task "研究主题" --provider deeps
 ```
 
 省略 `--task` 时，终端会提示输入研究主题。
+
+使用本地文档 RAG 时，可重复传入 `--file`：
+
+```bash
+python examples/run_tool_calling_agent.py \
+  --task "根据本地资料比较两种 RAG 方案" \
+  --file "资料/方案一.pdf" \
+  --file "资料/方案二.docx"
+```
+
+程序会把文档转换为 Markdown，按 1000 字和 150 字重叠切分，使用当前 Embedding 模型写入会话级 FAISS，并把最相关的 4 个片段交给 Agent。
 
 Streamlit 界面将在下一阶段完成，届时使用：
 

@@ -41,6 +41,12 @@ def parse_args():
         help="需要研究的问题或方向；未提供时将在终端中交互输入",
     )
     parser.add_argument(
+        "--file",
+        dest="files",
+        action="append",
+        help="需要用于本地 RAG 的文档路径，可重复传入",
+    )
+    parser.add_argument(
         "--provider",
         dest="model_provider",
         help="聊天模型提供方，例如 qwen 或 deepseek",
@@ -73,7 +79,7 @@ async def main():
     try:
         research_request = ResearchRequest(
             task=resolve_research_task(args.task),
-            files=[],
+            files=args.files or [],
         )
     except ValueError as error:
         raise SystemExit(f"研究主题无效：{error}") from error

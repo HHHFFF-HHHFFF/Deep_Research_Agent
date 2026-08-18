@@ -372,8 +372,8 @@ class FaissService:
 
             # 转换并规范化数据。
             if self.config.distance_strategy == "cosine":
-                # 说明相关实现细节。
-                scores = 1 - distances[0]
+                # 归一化向量的平方欧氏距离满足 d=2-2*cosine。
+                scores = np.clip(1 - distances[0] / 2, -1.0, 1.0)
             elif self.config.distance_strategy == "max_inner_product":
                 # 加载所需数据。
                 scores = distances[0]
