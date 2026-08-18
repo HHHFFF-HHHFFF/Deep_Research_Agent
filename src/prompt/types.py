@@ -1,33 +1,47 @@
 """提供数据类型相关实现。"""
-from typing import Any, Dict, Optional, Type, Literal, List, Union, TYPE_CHECKING, Union
-from pydantic import BaseModel, Field, ConfigDict
 
-from src.logger import logger
-from src.message import Message, SystemMessage, HumanMessage, ContentPartText
-from src.optimizer.types import Variable
+import builtins
+from typing import Any, Union
+
+from pydantic import BaseModel, ConfigDict, Field
+
 from src.dynamic import dynamic_manager
+from src.logger import logger
+from src.message import ContentPartText, HumanMessage, Message, SystemMessage
+from src.optimizer.types import Variable
+
 
 class Prompt(BaseModel):
     """定义 `Prompt`，封装相关数据与行为。"""
+
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="allow")
 
-    type: str = Field(description="The type of the prompt, e.g. 'system_prompt' or 'agent_message_prompt'")
+    type: str = Field(
+        description="The type of the prompt, e.g. 'system_prompt' or 'agent_message_prompt'"
+    )
     name: str = Field(description="The name of the prompt")
     description: str = Field(description="The description of the prompt")
-    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict, description="The metadata of the prompt")
-    prompt_config: Optional[Dict[str, Any]] = Field(default=None, description="The prompt information")
+    metadata: dict[str, Any] | None = Field(
+        default_factory=dict, description="The metadata of the prompt"
+    )
+    prompt_config: dict[str, Any] | None = Field(
+        default=None, description="The prompt information"
+    )
 
-    prompt_variable: Optional[Variable] = Field(default=None, description="The prompt variable")
-    message: Optional[Message] = Field(default=None, description="The message")
+    prompt_variable: Variable | None = Field(
+        default=None, description="The prompt variable"
+    )
+    message: Message | None = Field(default=None, description="The message")
 
-    def __init__(self, prompt_config: Optional[Dict[str, Any]] = None, **kwargs):
+    def __init__(self, prompt_config: dict[str, Any] | None = None, **kwargs):
         """初始化实例。"""
         super().__init__(**kwargs)
-        self.prompt_config = prompt_config if prompt_config is not None else self.prompt_config
+        self.prompt_config = (
+            prompt_config if prompt_config is not None else self.prompt_config
+        )
 
     async def initialize(self) -> None:
         """初始化组件及其依赖资源。"""
-        pass
 
     async def _load_prompt_variable(self) -> None:
         """实现 `_load_prompt_variable` 的业务逻辑。"""
@@ -48,17 +62,14 @@ class Prompt(BaseModel):
             await self._load_prompt_variable()
         return self.prompt_variable
 
-    async def get_trainable_variable(self) -> Dict[str, Variable]:
+    async def get_trainable_variable(self) -> dict[str, Variable]:
         """获取与 `get_trainable_variable` 对应的数据或状态。"""
         if self.prompt_variable is None:
             await self._load_prompt_variable()
         return self.prompt_variable.get_trainable_variables()
 
     async def get_message(
-        self,
-        modules: Optional[Dict[str, Any]] = None,
-        reload: bool = False,
-        **kwargs
+        self, modules: dict[str, Any] | None = None, reload: bool = False, **kwargs
     ):
         """获取与 `get_message` 对应的数据或状态。"""
         # 加载所需数据。
@@ -107,6 +118,7 @@ class Prompt(BaseModel):
 
 class PromptConfig(BaseModel):
     """定义 `PromptConfig`，封装相关数据与行为。"""
+
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="allow")
 
     name: str = Field(description="The name of the prompt")
@@ -114,15 +126,29 @@ class PromptConfig(BaseModel):
     description: str = Field(description="The description of the prompt")
     version: str = Field(default="1.0.0", description="Version of the prompt")
     template: str = Field(description="The template string for the prompt")
-    variables: Optional[Union[Dict[str, 'Variable'], 'Variable']] = Field(default=None, description="The variables used in the template. Can be Dict[str, Variable] or single Variable")
-    cls: Optional[Type[Prompt]] = Field(default=None, description="The class of the prompt")
-    instance: Optional[Any] = Field(default=None, description="The instance of the prompt")
-    config: Optional[Dict[str, Any]] = Field(default_factory=dict, description="The initialization configuration of the prompt")
-    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict, description="The metadata of the prompt")
-    code: Optional[str] = Field(default=None, description="Source code for dynamically generated prompt classes (used when cls cannot be imported from a module)")
+    variables: Union[dict[str, "Variable"], "Variable"] | None = Field(
+        default=None,
+        description="The variables used in the template. Can be Dict[str, Variable] or single Variable",
+    )
+    cls: builtins.type[Prompt] | None = Field(
+        default=None, description="The class of the prompt"
+    )
+    instance: Any | None = Field(default=None, description="The instance of the prompt")
+    config: dict[str, Any] | None = Field(
+        default_factory=dict,
+        description="The initialization configuration of the prompt",
+    )
+    metadata: dict[str, Any] | None = Field(
+        default_factory=dict, description="The metadata of the prompt"
+    )
+    code: str | None = Field(
+        default=None,
+        description="Source code for dynamically generated prompt classes (used when cls cannot be imported from a module)",
+    )
 
-    def model_dump(self, **kwargs) -> Dict[str, Any]:
+    def model_dump(self, **kwargs) -> dict[str, Any]:
         """实现 `model_dump` 的业务逻辑。"""
+
         def serialize_variables(vars_data: Any) -> Any:
             """序列化与 `serialize_variables` 对应的数据或状态。"""
             if vars_data is None:
@@ -163,7 +189,7 @@ class PromptConfig(BaseModel):
         return result
 
     @classmethod
-    def model_validate(cls, data: Dict[str, Any]) -> 'PromptConfig':
+    def model_validate(cls, data: dict[str, Any]) -> "PromptConfig":
         """实现 `model_validate` 的业务逻辑。"""
         name = data.get("name")
         prompt_type = data.get("type")
@@ -181,10 +207,7 @@ class PromptConfig(BaseModel):
             if class_name:
                 try:
                     cls_ = dynamic_manager.load_class(
-                        code,
-                        class_name=class_name,
-                        base_class=Prompt,
-                        context="prompt"
+                        code, class_name=class_name, base_class=Prompt, context="prompt"
                     )
                 except Exception as e:
                     logger.warning(f"Failed to load prompt class from code: {e}")
@@ -207,7 +230,7 @@ class PromptConfig(BaseModel):
             instance=instance,
             config=config_dict,
             metadata=metadata,
-            code=code
+            code=code,
         )
 
     def __str__(self):

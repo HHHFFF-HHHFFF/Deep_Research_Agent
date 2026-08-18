@@ -1,30 +1,34 @@
 import logging
 import threading
+from contextlib import ExitStack
 from enum import IntEnum
-from typing import Any, Optional
-from queue import Queue, Empty
+from queue import Empty, Full, Queue
+from typing import Any
 
 from rich.console import Console, Group
+from rich.logging import RichHandler
 from rich.panel import Panel
 from rich.rule import Rule
 from rich.syntax import Syntax
 from rich.table import Table
 from rich.tree import Tree
-from rich.logging import RichHandler
 
 YELLOW_HEX = "#d4b702"
+
 
 class LogLevel(IntEnum):
     CRITICAL = logging.CRITICAL
     FATAL = logging.FATAL
     ERROR = logging.ERROR
     WARNING = logging.WARNING
-    WARN = logging.WARN
+    WARN = logging.WARNING
     INFO = logging.INFO
     DEBUG = logging.DEBUG
 
+
 class Logger(logging.Logger):
     """定义 `Logger`，封装相关数据与行为。"""
+
     def __init__(self, name="logger", level=logging.INFO):
         # 初始化相关状态。
         super().__init__(name, level)
@@ -36,10 +40,11 @@ class Logger(logging.Logger):
         )
 
         # 执行异步任务。
-        self._log_queue: Optional[Queue] = None
-        self._log_thread: Optional[threading.Thread] = None
+        self._log_queue: Queue | None = None
+        self._log_thread: threading.Thread | None = None
         self._stop_event = threading.Event()
-        self._log_path: Optional[str] = None
+        self._log_path: str | None = None
+        self._file_stack = ExitStack()
         self._initialized = False
 
     def _log_writer_thread(self, log_path: str):
@@ -62,6 +67,7 @@ class Logger(logging.Logger):
                 except Exception as e:
                     # 持久化相关数据。
                     import sys
+
                     print(f"Logger write error: {e}", file=sys.stderr)
 
     def _enqueue_log(self, level: str, msg: str, *args, **kwargs):
@@ -73,25 +79,23 @@ class Logger(logging.Logger):
         try:
             # 转换并规范化数据。
             record = self.makeRecord(
-                self.name,
-                getattr(logging, level.upper()),
-                "", 0, msg, args, None
+                self.name, getattr(logging, level.upper()), "", 0, msg, args, None
             )
             formatted = self.formatter.format(record)
 
             # 说明相关实现细节。
             try:
                 self._log_queue.put_nowait(formatted + "\n")
-            except:
+            except Full:
                 # 说明相关实现细节。
                 try:
                     self._log_queue.get_nowait()
                     self._log_queue.put_nowait(formatted + "\n")
-                except:
-                    pass  # 处理异常情况。
+                except (Empty, Full):
+                    return
 
-        except Exception:
-            pass  # 处理异常情况。
+        except (AttributeError, TypeError, ValueError):
+            return
 
     def initialize(self, config, level: int = LogLevel.INFO):
         """初始化组件及其依赖资源。"""
@@ -103,10 +107,7 @@ class Logger(logging.Logger):
 
         # 组装并返回结果。
         self.console = Console(
-            width=None,
-            markup=True,
-            color_system="truecolor",
-            force_terminal=True
+            width=None, markup=True, color_system="truecolor", force_terminal=True
         )
         rich_handler = RichHandler(
             console=self.console,
@@ -115,7 +116,7 @@ class Logger(logging.Logger):
             show_level=False,
             show_path=False,
             markup=True,
-            omit_repeated_times=False
+            omit_repeated_times=False,
         )
         rich_handler.setLevel(level)
         rich_handler.setFormatter(self.formatter)
@@ -130,17 +131,22 @@ class Logger(logging.Logger):
             target=self._log_writer_thread,
             args=(log_path,),
             daemon=True,
-            name="Logger-Writer"
+            name="Logger-Writer",
         )
         self._log_thread.start()
 
         # 处理文件与路径。
+        self._file_stack.close()
+        self._file_stack = ExitStack()
+        log_file = self._file_stack.enter_context(
+            open(log_path, "a", encoding="utf-8")  # noqa: SIM115 - 文件句柄由 ExitStack 统一关闭
+        )
         self.file_console = Console(
             width=None,
             markup=True,
             color_system="truecolor",
             force_terminal=True,
-            file=open(log_path, "a", encoding="utf-8")
+            file=log_file,
         )
         rich_file_handler = RichHandler(
             console=self.file_console,
@@ -197,10 +203,7 @@ class Logger(logging.Logger):
         super().debug(msg, *args, **kwargs)
         self._enqueue_log("debug", msg, *args, **kwargs)
 
-    def log(self,
-            msg: Optional[Any] = None,
-            level: LogLevel = LogLevel.INFO,
-            **kwargs):
+    def log(self, msg: Any | None = None, level: LogLevel = LogLevel.INFO, **kwargs):
         """实现 `log` 的业务逻辑。"""
         if isinstance(msg, str):
             self.info(msg, **kwargs)
@@ -219,5 +222,7 @@ class Logger(logging.Logger):
                 self._log_queue.put(None)
             self._stop_event.set()
             self._log_thread.join(timeout=5)  # 说明相关实现细节。
+        self._file_stack.close()
+
 
 logger = Logger()

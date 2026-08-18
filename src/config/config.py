@@ -58,6 +58,7 @@ def process_general(config: MMConfig) -> MMConfig:
 
     return config
 
+
 def process_tools(config: MMConfig) -> MMConfig:
     for key in config:
         if "tool" in key:
@@ -110,9 +111,7 @@ def process_agent(config: MMConfig) -> MMConfig:
         if not key.endswith("_agent") or not isinstance(config[key], dict):
             continue
         if "workdir" in config[key]:
-            config[key].update(
-                {"workdir": str(assemble_project_path(config.workdir))}
-            )
+            config[key].update({"workdir": str(assemble_project_path(config.workdir))})
         if "model_name" in config[key]:
             config[key].update({"model_name": config.model_name})
     return config
@@ -131,7 +130,10 @@ class Config(MMConfig, metaclass=Singleton):
         else:
             cfg_options = args.cfg_options
         for item in args.__dict__:
-            if item not in ["config", "cfg_options"] and args.__dict__[item] is not None:
+            if (
+                item not in ["config", "cfg_options"]
+                and args.__dict__[item] is not None
+            ):
                 cfg_options[item] = args.__dict__[item]
 
         mmconfig.merge_from_dict(cfg_options)

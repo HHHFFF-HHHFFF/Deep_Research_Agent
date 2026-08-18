@@ -2,47 +2,66 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
 
 class SkillExtra(BaseModel):
     """定义 `SkillExtra`，封装相关数据与行为。"""
+
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="allow")
 
-    file_path: Optional[str] = Field(default=None, description="Related file path")
-    data: Optional[Dict[str, Any]] = Field(default=None, description="Arbitrary extra data")
+    file_path: str | None = Field(default=None, description="Related file path")
+    data: dict[str, Any] | None = Field(
+        default=None, description="Arbitrary extra data"
+    )
 
 
 class SkillResponse(BaseModel):
     """定义 `SkillResponse`，封装相关数据与行为。"""
+
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="allow")
 
     success: bool = Field(description="Whether the operation succeeded")
     message: str = Field(description="Human-readable result message")
-    extra: Optional[SkillExtra] = Field(default=None, description="Extra data")
+    extra: SkillExtra | None = Field(default=None, description="Extra data")
 
 
 class SkillConfig(BaseModel):
     """定义 `SkillConfig`，封装相关数据与行为。"""
+
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="allow")
 
     name: str = Field(description="Skill name from YAML frontmatter")
     description: str = Field(description="Skill description from YAML frontmatter")
-    metadata: Dict[str, Any] = Field(default_factory=dict, description="Additional YAML frontmatter fields")
-    require_grad: bool = Field(default=False, description="Whether the skill is trainable")
+    metadata: dict[str, Any] = Field(
+        default_factory=dict, description="Additional YAML frontmatter fields"
+    )
+    require_grad: bool = Field(
+        default=False, description="Whether the skill is trainable"
+    )
     version: str = Field(default="1.0.0", description="Version of the skill")
 
     skill_dir: str = Field(description="Absolute path to the skill directory")
-    content: str = Field(default="", description="Full markdown body of SKILL.md (after frontmatter)")
-    scripts: List[str] = Field(default_factory=list, description="Paths to scripts under scripts/")
-    resources: List[str] = Field(default_factory=list, description="Paths to files under resources/")
-    reference_files: List[str] = Field(default_factory=list, description="Paths to extra markdown files")
+    content: str = Field(
+        default="", description="Full markdown body of SKILL.md (after frontmatter)"
+    )
+    scripts: list[str] = Field(
+        default_factory=list, description="Paths to scripts under scripts/"
+    )
+    resources: list[str] = Field(
+        default_factory=list, description="Paths to files under resources/"
+    )
+    reference_files: list[str] = Field(
+        default_factory=list, description="Paths to extra markdown files"
+    )
 
-    text: Optional[str] = Field(default=None, description="Pre-built text representation for prompt injection")
+    text: str | None = Field(
+        default=None, description="Pre-built text representation for prompt injection"
+    )
 
-    def model_dump(self, **kwargs) -> Dict[str, Any]:
+    def model_dump(self, **kwargs) -> dict[str, Any]:
         return {
             "name": self.name,
             "description": self.description,
@@ -60,6 +79,6 @@ class SkillConfig(BaseModel):
 
 __all__ = [
     "SkillConfig",
-    "SkillResponse",
     "SkillExtra",
+    "SkillResponse",
 ]

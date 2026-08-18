@@ -1,14 +1,15 @@
-from datetime import datetime
-from typing import Dict, Any, Optional, List, Type
-from pydantic import BaseModel, Field, ConfigDict
-from enum import Enum
 import json
+from datetime import datetime
+from enum import Enum
+from typing import Any
 
-from src.utils import dedent
+from pydantic import BaseModel, ConfigDict, Field
+
 from src.dynamic import dynamic_manager
+from src.utils import dedent
+
 
 class EventType(Enum):
-
     # 说明相关实现细节。
     TASK_START = "task_start"
     TOOL_STEP = "tool_step"
@@ -17,15 +18,22 @@ class EventType(Enum):
     # 说明相关实现细节。
     OPTIMIZATION_STEP = "optimization_step"
 
+
 class ChatEvent(BaseModel):
     id: str = Field(..., description="The unique identifier for the event.")
     step_number: int = Field(..., description="The step number of the event.")
     event_type: EventType = Field(..., description="The type of the event.")
-    timestamp: datetime = Field(default_factory=datetime.now, description="The timestamp of the event.")
-    data: Dict[str, Any] = Field(default_factory=dict, description="The data of the event.")
-    agent_name: Optional[str] = Field(None, description="The name of the agent that generated the event.")
-    session_id: Optional[str] = Field(None, description="The session ID of the event.")
-    task_id: Optional[str] = Field(None, description="The task ID of the event.")
+    timestamp: datetime = Field(
+        default_factory=datetime.now, description="The timestamp of the event."
+    )
+    data: dict[str, Any] = Field(
+        default_factory=dict, description="The data of the event."
+    )
+    agent_name: str | None = Field(
+        None, description="The name of the agent that generated the event."
+    )
+    session_id: str | None = Field(None, description="The session ID of the event.")
+    task_id: str | None = Field(None, description="The task ID of the event.")
 
     def __str__(self):
         string = dedent(f"""<chat_event>
@@ -43,17 +51,21 @@ class ChatEvent(BaseModel):
     def __repr__(self):
         return self.__str__()
 
+
 class Importance(Enum):
     HIGH = "high"
     MEDIUM = "medium"
     LOW = "low"
 
+
 class Insight(BaseModel):
     id: str = Field(description="The unique identifier for the insight.")
     content: str = Field(description="The insight content")
     importance: Importance = Field(description="Importance level")
-    source_event_id: str = Field(description="ID of the event that generated this insight")
-    tags: List[str] = Field(description="Tags for categorization")
+    source_event_id: str = Field(
+        description="ID of the event that generated this insight"
+    )
+    tags: list[str] = Field(description="Tags for categorization")
 
     def __str__(self):
         string = dedent(f"""<insight>
@@ -67,6 +79,7 @@ class Insight(BaseModel):
 
     def __repr__(self):
         return self.__str__()
+
 
 class Summary(BaseModel):
     id: str = Field(description="The unique identifier for the summary.")
@@ -84,14 +97,22 @@ class Summary(BaseModel):
     def __repr__(self):
         return self.__str__()
 
+
 class Memory(BaseModel):
     """定义 `Memory`，封装相关数据与行为。"""
+
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="allow")
 
     name: str = Field(default="", description="The name of the memory system")
-    description: str = Field(default="", description="The description of the memory system")
-    save_path: Optional[str] = Field(default=None, description="Path to save/load memory JSON file")
-    require_grad: bool = Field(default=False, description="Whether the memory system requires gradients")
+    description: str = Field(
+        default="", description="The description of the memory system"
+    )
+    save_path: str | None = Field(
+        default=None, description="Path to save/load memory JSON file"
+    )
+    require_grad: bool = Field(
+        default=False, description="Whether the memory system requires gradients"
+    )
 
     def __init__(self, **kwargs):
         """初始化实例。"""
@@ -99,10 +120,11 @@ class Memory(BaseModel):
         # 更新相关状态。
         if not self.name:
             import inflection
+
             self.name = inflection.underscore(self.__class__.__name__)
         # 更新相关状态。
         if not self.description and self.__class__.__doc__:
-            self.description = self.__class__.__doc__.strip().split('\n')[0]
+            self.description = self.__class__.__doc__.strip().split("\n")[0]
 
     def __str__(self):
         return f"Memory(name={self.name}, description={self.description})"
@@ -113,18 +135,33 @@ class Memory(BaseModel):
 
 class MemoryConfig(BaseModel):
     """定义 `MemoryConfig`，封装相关数据与行为。"""
+
     name: str = Field(description="The name of the memory system")
     description: str = Field(description="The description of the memory system")
-    require_grad: bool = Field(default=False, description="Whether the memory system requires gradients")
+    require_grad: bool = Field(
+        default=False, description="Whether the memory system requires gradients"
+    )
     version: str = Field(default="1.0.0", description="Version of the memory system")
 
-    cls: Optional[Type[Memory]] = Field(default=None, description="The class of the memory system")
-    instance: Optional[Any] = Field(default=None, description="The instance of the memory system")
-    config: Optional[Dict[str, Any]] = Field(default_factory=dict, description="The initialization configuration of the memory system")
-    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict, description="The metadata of the memory system")
-    code: Optional[str] = Field(default=None, description="Source code for dynamically generated memory classes (used when cls cannot be imported from a module)")
+    cls: type[Memory] | None = Field(
+        default=None, description="The class of the memory system"
+    )
+    instance: Any | None = Field(
+        default=None, description="The instance of the memory system"
+    )
+    config: dict[str, Any] | None = Field(
+        default_factory=dict,
+        description="The initialization configuration of the memory system",
+    )
+    metadata: dict[str, Any] | None = Field(
+        default_factory=dict, description="The metadata of the memory system"
+    )
+    code: str | None = Field(
+        default=None,
+        description="Source code for dynamically generated memory classes (used when cls cannot be imported from a module)",
+    )
 
-    def model_dump(self, **kwargs) -> Dict[str, Any]:
+    def model_dump(self, **kwargs) -> dict[str, Any]:
         """实现 `model_dump` 的业务逻辑。"""
         return {
             "name": self.name,
@@ -139,7 +176,7 @@ class MemoryConfig(BaseModel):
         }
 
     @classmethod
-    def model_validate(cls, data: Dict[str, Any]) -> 'MemoryConfig':
+    def model_validate(cls, data: dict[str, Any]) -> "MemoryConfig":
         """实现 `model_validate` 的业务逻辑。"""
         name = data.get("name")
         description = data.get("description")
@@ -153,12 +190,9 @@ class MemoryConfig(BaseModel):
             if class_name:
                 try:
                     cls_ = dynamic_manager.load_class(
-                        code,
-                        class_name=class_name,
-                        base_class=Memory,
-                        context="memory"
+                        code, class_name=class_name, base_class=Memory, context="memory"
                     )
-                except Exception as e:
+                except Exception:
                     cls_ = None
             else:
                 cls_ = None

@@ -25,12 +25,14 @@ from src.environment.types import ActionResult
 from src.logger import logger
 from src.message import HumanMessage
 from src.model import model_manager
+from src.utils import write_pickle_file
 
 
 def dependable_faiss_import():
     """实现 `dependable_faiss_import` 的业务逻辑。"""
     try:
         import faiss
+
         return faiss
     except ImportError:
         raise ImportError(
@@ -42,6 +44,7 @@ def dependable_faiss_import():
 
 class Document:
     """定义 `Document`，封装相关数据与行为。"""
+
     def __init__(self, page_content: str, metadata: dict[str, Any] | None = None):
         self.page_content = page_content
         self.metadata = metadata or {}
@@ -54,7 +57,7 @@ class FaissService:
         self,
         base_dir: str | Path,
         model_name: str | None = None,
-        config: FaissConfig | None = None
+        config: FaissConfig | None = None,
     ):
         """初始化实例。"""
         self.base_dir = Path(base_dir)
@@ -103,11 +106,13 @@ class FaissService:
             test_message = [HumanMessage(content="test")]
             response = await model_manager.aembedding(
                 model=self.model_name or model_manager.embedding_model_name,
-                messages=test_message
+                messages=test_message,
             )
 
             if not response.success:
-                raise FaissConfigurationError(f"Failed to get embedding dimension: {response.message}")
+                raise FaissConfigurationError(
+                    f"Failed to get embedding dimension: {response.message}"
+                )
 
             response_data = response.extra.data if response.extra else None
             if not response_data or "embeddings" not in response_data:
@@ -135,7 +140,9 @@ class FaissService:
                     # 执行回退或重试逻辑。
                     self._embedding_dimension = len(first_emb)
             else:
-                raise FaissConfigurationError(f"Invalid embedding response format: {type(embedding)}")
+                raise FaissConfigurationError(
+                    f"Invalid embedding response format: {type(embedding)}"
+                )
 
             return self._embedding_dimension
 
@@ -174,7 +181,9 @@ class FaissService:
             else:  # 说明相关实现细节。
                 self.index = self.faiss.IndexFlatL2(dimension)
 
-            logger.info(f"| 🔍 Created FAISS index with dimension {dimension}, strategy: {self.config.distance_strategy}")
+            logger.info(
+                f"| 🔍 Created FAISS index with dimension {dimension}, strategy: {self.config.distance_strategy}"
+            )
 
     def _load_index(self) -> None:
         """实现 `_load_index` 的业务逻辑。"""
@@ -183,14 +192,16 @@ class FaissService:
             self.index = self.faiss.read_index(str(self.index_path))
 
             # 加载所需数据。
-            with open(self.pkl_path, 'rb') as f:
+            with open(self.pkl_path, "rb") as f:
                 data = pickle.load(f)
                 self.docstore = data.get("docstore", {})
                 self.id_to_index = data.get("id_to_index", {})
                 self.index_to_id = data.get("index_to_id", {})
                 self._embedding_dimension = data.get("embedding_dimension")
 
-            logger.info(f"| 🔍 Loaded existing FAISS index from {self.base_dir} with {len(self.docstore)} documents")
+            logger.info(
+                f"| 🔍 Loaded existing FAISS index from {self.base_dir} with {len(self.docstore)} documents"
+            )
 
         except Exception as e:
             raise FaissIndexError(f"Failed to load FAISS index: {e}")
@@ -201,11 +212,13 @@ class FaissService:
             messages = [HumanMessage(content=text) for text in texts]
             response = await model_manager.aembedding(
                 model=self.model_name or model_manager.embedding_model_name,
-                messages=messages
+                messages=messages,
             )
 
             if not response.success:
-                raise FaissEmbeddingError(f"Failed to get embeddings: {response.message}")
+                raise FaissEmbeddingError(
+                    f"Failed to get embeddings: {response.message}"
+                )
 
             response_data = response.extra.data if response.extra else None
             if not response_data or "embeddings" not in response_data:
@@ -235,12 +248,16 @@ class FaissService:
                         embeddings_list.append(np.array(emb))
 
                 if embeddings_list:
-                    embeddings_array = np.stack(embeddings_list, axis=0).astype(np.float32)
+                    embeddings_array = np.stack(embeddings_list, axis=0).astype(
+                        np.float32
+                    )
                     return embeddings_array
                 else:
                     raise FaissEmbeddingError("Empty embeddings list")
             else:
-                raise FaissEmbeddingError(f"Unexpected embedding format: {type(embeddings)}")
+                raise FaissEmbeddingError(
+                    f"Unexpected embedding format: {type(embeddings)}"
+                )
 
         except Exception as e:
             raise FaissEmbeddingError(f"Failed to get embeddings: {e}")
@@ -277,7 +294,7 @@ class FaissService:
                 return ActionResult(
                     success=True,
                     message="No valid texts to add (all texts were empty)",
-                    extra={"ids": [], "count": 0, "total_input": len(request.texts)}
+                    extra={"ids": [], "count": 0, "total_input": len(request.texts)},
                 )
 
             # 说明相关实现细节。
@@ -301,7 +318,9 @@ class FaissService:
             self.index.add(embeddings)
 
             # 说明相关实现细节。
-            for i, (text, metadata, doc_id) in enumerate(zip(valid_texts, valid_metadatas, ids)):
+            for i, (text, metadata, doc_id) in enumerate(
+                zip(valid_texts, valid_metadatas, ids)
+            ):
                 idx = start_idx + i
                 self.docstore[doc_id] = Document(page_content=text, metadata=metadata)
                 self.id_to_index[doc_id] = idx
@@ -318,15 +337,15 @@ class FaissService:
                     "ids": ids,
                     "count": len(ids),
                     "total_input": len(request.texts),
-                    "valid_input": len(valid_texts)
-                }
+                    "valid_input": len(valid_texts),
+                },
             )
 
         except Exception as e:
             return ActionResult(
                 success=False,
                 message=f"Failed to add documents: {e!s}",
-                extra={"error": str(e)}
+                extra={"error": str(e)},
             )
 
     async def search_similar(self, request: FaissSearchRequest) -> ActionResult:
@@ -335,13 +354,15 @@ class FaissService:
             return ActionResult(
                 success=False,
                 message="FAISS index not initialized or empty",
-                extra={"error": "FAISS index not initialized or empty"}
+                extra={"error": "FAISS index not initialized or empty"},
             )
 
         try:
             # 检索所需信息。
             query_embeddings = await self._get_embeddings([request.query])
-            query_embedding = self._normalize_vectors(query_embeddings)[0:1]  # 说明相关实现细节。
+            query_embedding = self._normalize_vectors(query_embeddings)[
+                0:1
+            ]  # 说明相关实现细节。
 
             # 检索所需信息。
             k = min(request.k, self.index.ntotal)
@@ -374,12 +395,15 @@ class FaissService:
                     if request.filter:
                         if isinstance(request.filter, dict):
                             # 校验输入与当前状态。
-                            if not all(doc.metadata.get(k) == v for k, v in request.filter.items()):
+                            if not all(
+                                doc.metadata.get(k) == v
+                                for k, v in request.filter.items()
+                            ):
                                 continue
-                        elif callable(request.filter):
-                            # 说明相关实现细节。
-                            if not request.filter(doc.metadata):
-                                continue
+                        elif callable(request.filter) and not request.filter(
+                            doc.metadata
+                        ):
+                            continue
                     docs_and_scores.append((doc, float(score)))
 
             # 说明相关实现细节。
@@ -388,7 +412,8 @@ class FaissService:
             # 说明相关实现细节。
             if request.score_threshold is not None:
                 docs_and_scores = [
-                    (doc, score) for doc, score in docs_and_scores
+                    (doc, score)
+                    for doc, score in docs_and_scores
                     if score >= request.score_threshold
                 ]
 
@@ -400,14 +425,13 @@ class FaissService:
 
             # 转换并规范化数据。
             documents_dict = [
-                {
-                    "page_content": doc.page_content,
-                    "metadata": doc.metadata
-                }
+                {"page_content": doc.page_content, "metadata": doc.metadata}
                 for doc in documents
             ]
 
-            logger.info(f"| 🔍 Found {len(documents)} similar documents for query: {request.query[:50]}...")
+            logger.info(
+                f"| 🔍 Found {len(documents)} similar documents for query: {request.query[:50]}..."
+            )
             return ActionResult(
                 success=True,
                 message=f"Found {len(documents)} similar documents",
@@ -416,15 +440,15 @@ class FaissService:
                     "scores": scores_list,
                     "total_found": len(documents),
                     "query": request.query,
-                    "k": request.k
-                }
+                    "k": request.k,
+                },
             )
 
         except Exception as e:
             return ActionResult(
                 success=False,
                 message=f"Failed to search documents: {e!s}",
-                extra={"error": str(e), "query": request.query}
+                extra={"error": str(e), "query": request.query},
             )
 
     async def delete_documents(self, request: FaissDeleteRequest) -> ActionResult:
@@ -433,7 +457,7 @@ class FaissService:
             return ActionResult(
                 success=False,
                 message="FAISS index not initialized",
-                extra={"error": "FAISS index not initialized"}
+                extra={"error": "FAISS index not initialized"},
             )
 
         try:
@@ -457,15 +481,15 @@ class FaissService:
                 extra={
                     "deleted_count": deleted_count,
                     "requested_ids": request.ids,
-                    "total_requested": len(request.ids)
-                }
+                    "total_requested": len(request.ids),
+                },
             )
 
         except Exception as e:
             return ActionResult(
                 success=False,
                 message=f"Failed to delete documents: {e!s}",
-                extra={"error": str(e), "requested_ids": request.ids}
+                extra={"error": str(e), "requested_ids": request.ids},
             )
 
     async def get_index_info(self) -> ActionResult:
@@ -474,18 +498,22 @@ class FaissService:
             return ActionResult(
                 success=False,
                 message="FAISS index not initialized",
-                extra={"error": "FAISS index not initialized"}
+                extra={"error": "FAISS index not initialized"},
             )
 
         try:
             total_documents = len(self.docstore)
-            embedding_dimension = self.index.d if hasattr(self.index, 'd') else self._embedding_dimension or 0
+            embedding_dimension = (
+                self.index.d
+                if hasattr(self.index, "d")
+                else self._embedding_dimension or 0
+            )
 
             index_info = FaissIndexInfo(
                 total_documents=total_documents,
                 embedding_dimension=embedding_dimension,
                 index_type=type(self.index).__name__,
-                distance_strategy=self.config.distance_strategy
+                distance_strategy=self.config.distance_strategy,
             )
 
             return ActionResult(
@@ -497,15 +525,15 @@ class FaissService:
                     "embedding_dimension": embedding_dimension,
                     "index_type": type(self.index).__name__,
                     "distance_strategy": self.config.distance_strategy,
-                    "index_name": self.config.index_name
-                }
+                    "index_name": self.config.index_name,
+                },
             )
 
         except Exception as e:
             return ActionResult(
                 success=False,
                 message=f"Failed to get index info: {e!s}",
-                extra={"error": str(e)}
+                extra={"error": str(e)},
             )
 
     async def save_index(self) -> None:
@@ -522,10 +550,9 @@ class FaissService:
                 "docstore": self.docstore,
                 "id_to_index": self.id_to_index,
                 "index_to_id": self.index_to_id,
-                "embedding_dimension": self._embedding_dimension
+                "embedding_dimension": self._embedding_dimension,
             }
-            with open(self.pkl_path, 'wb') as f:
-                pickle.dump(data, f)
+            await write_pickle_file(self.pkl_path, data)
 
             logger.info(f"| 💾 Saved FAISS index to {self.base_dir}")
 
@@ -534,7 +561,10 @@ class FaissService:
 
     async def _auto_save(self) -> None:
         """实现 `_auto_save` 的业务逻辑。"""
-        if self.config.auto_save and self._operation_count % self.config.save_interval == 0:
+        if (
+            self.config.auto_save
+            and self._operation_count % self.config.save_interval == 0
+        ):
             await self.save_index()
 
     async def cleanup(self) -> None:

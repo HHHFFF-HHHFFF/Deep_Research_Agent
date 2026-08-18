@@ -2,48 +2,60 @@
 
 import asyncio
 import os
-from typing import List, Optional, Dict, Any
-from langchain_core.messages import BaseMessage
-from datetime import datetime
-from pydantic import Field, ConfigDict
+from datetime import datetime, timezone
+from typing import Any
 
-from src.agent.types import Agent, AgentResponse, AgentExtra, ThinkOutput
+from langchain_core.messages import BaseMessage
+from pydantic import ConfigDict, Field
+
+from src.agent.types import Agent, AgentExtra, AgentResponse, ThinkOutput
 from src.config import config
-from src.logger import logger
-from src.utils import dedent, parse_tool_args
-from src.tool.server import tcp
-from src.skill.server import scp
 from src.environment.server import ecp
-from src.memory import memory_manager, EventType
-from src.tracer import Tracer, Record
+from src.logger import logger
+from src.memory import EventType, memory_manager
 from src.model import model_manager
 from src.registry import AGENT
 from src.session import SessionContext
+from src.skill.server import scp
+from src.tool.server import tcp
+from src.tracer import Record, Tracer
+from src.utils import dedent, parse_tool_args
+
 
 @AGENT.register_module(force=True)
 class ToolCallingAgent(Agent):
     """定义 `ToolCallingAgent`，封装相关数据与行为。"""
+
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="allow")
 
-    name: str = Field(default="tool_calling", description="The name of the tool calling agent.")
-    description: str = Field(default="A tool calling agent that can call tools to complete tasks.", description="The description of the tool calling agent.")
-    metadata: Dict[str, Any] = Field(default={}, description="The metadata of the tool calling agent.")
-    require_grad: bool = Field(default=False, description="Whether the agent requires gradients")
+    name: str = Field(
+        default="tool_calling", description="The name of the tool calling agent."
+    )
+    description: str = Field(
+        default="A tool calling agent that can call tools to complete tasks.",
+        description="The description of the tool calling agent.",
+    )
+    metadata: dict[str, Any] = Field(
+        default={}, description="The metadata of the tool calling agent."
+    )
+    require_grad: bool = Field(
+        default=False, description="Whether the agent requires gradients"
+    )
 
     def __init__(
         self,
         workdir: str,
-        name: Optional[str] = None,
-        description: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-        model_name: Optional[str] = None,
-        prompt_name: Optional[str] = None,
-        memory_name: Optional[str] = None,
+        name: str | None = None,
+        description: str | None = None,
+        metadata: dict[str, Any] | None = None,
+        model_name: str | None = None,
+        prompt_name: str | None = None,
+        memory_name: str | None = None,
         max_tools: int = 10,
         max_steps: int = 20,
         review_steps: int = 5,
         require_grad: bool = False,
-        **kwargs
+        **kwargs,
     ):
         # 更新相关状态。
         if not prompt_name:
@@ -61,7 +73,8 @@ class ToolCallingAgent(Agent):
             max_steps=max_steps,
             review_steps=review_steps,
             require_grad=require_grad,
-            **kwargs)
+            **kwargs,
+        )
 
     async def initialize(self):
         """初始化组件及其依赖资源。"""
@@ -81,7 +94,9 @@ class ToolCallingAgent(Agent):
 
         return tracer, record
 
-    async def _get_environment_context(self, ctx: SessionContext, record: Record = None, **kwargs) -> Dict[str, Any]:
+    async def _get_environment_context(
+        self, ctx: SessionContext, record: Record = None, **kwargs
+    ) -> dict[str, Any]:
         """实现 `_get_environment_context` 的业务逻辑。"""
 
         environment_context = "<environment_context>"
@@ -123,7 +138,9 @@ class ToolCallingAgent(Agent):
             "environment_context": environment_context,
         }
 
-    async def _get_tool_context(self, ctx: SessionContext, record: Record = None, **kwargs) -> Dict[str, Any]:
+    async def _get_tool_context(
+        self, ctx: SessionContext, record: Record = None, **kwargs
+    ) -> dict[str, Any]:
         """实现 `_get_tool_context` 的业务逻辑。"""
 
         tool_context = "<tool_context>"
@@ -139,13 +156,15 @@ class ToolCallingAgent(Agent):
             "tool_context": tool_context,
         }
 
-    async def _think_and_tool(self,
-                              messages: List[BaseMessage],
-                              task_id: str,
-                              step_number: int,
-                              record: Record = None,
-                              ctx: SessionContext = None,
-                              **kwargs)->Dict[str, Any]:
+    async def _think_and_tool(
+        self,
+        messages: list[BaseMessage],
+        task_id: str,
+        step_number: int,
+        record: Record = None,
+        ctx: SessionContext = None,
+        **kwargs,
+    ) -> dict[str, Any]:
         """实现 `_think_and_tool` 的业务逻辑。"""
 
         done = False
@@ -162,9 +181,7 @@ class ToolCallingAgent(Agent):
 
         try:
             think_output = await model_manager(
-                model=self.model_name,
-                messages=messages,
-                response_format=ThinkOutput
+                model=self.model_name, messages=messages, response_format=ThinkOutput
             )
             think_output = think_output.extra.parsed_model
 
@@ -190,9 +207,13 @@ class ToolCallingAgent(Agent):
                 action_type = action.type
                 action_name = action.name
                 action_args_str = action.args
-                action_args = parse_tool_args(action_args_str) if action_args_str else {}
+                action_args = (
+                    parse_tool_args(action_args_str) if action_args_str else {}
+                )
 
-                logger.info(f"| 📝 Action {i+1}/{len(actions)}: [{action_type}] {action_name}")
+                logger.info(
+                    f"| 📝 Action {i + 1}/{len(actions)}: [{action_type}] {action_name}"
+                )
                 logger.info(f"| 📝 Args: {action_args}")
 
                 if action_type == "skill":
@@ -203,9 +224,13 @@ class ToolCallingAgent(Agent):
                         ctx=ctx,
                     )
                     action_result = response.message
-                    action_extra = response.extra if hasattr(response, 'extra') else None
+                    action_extra = (
+                        response.extra if hasattr(response, "extra") else None
+                    )
 
-                    logger.info(f"| ✅ Skill '{action_name}' completed (success={response.success})")
+                    logger.info(
+                        f"| ✅ Skill '{action_name}' completed (success={response.success})"
+                    )
                     logger.info(f"| 📄 Result: {str(action_result)[:500]}")
 
                     action_dict = action.model_dump()
@@ -215,7 +240,7 @@ class ToolCallingAgent(Agent):
                     record_extra = {}
                     record_extra.update(action_dict)
                     if action_extra is not None:
-                        record_extra['extra'] = action_extra.model_dump()
+                        record_extra["extra"] = action_extra.model_dump()
                     record_data["actions"].append(record_extra)
 
                 else:
@@ -226,10 +251,12 @@ class ToolCallingAgent(Agent):
                         ctx=ctx,
                     )
                     action_result = tool_response.message
-                    action_extra = tool_response.extra if hasattr(tool_response, 'extra') else None
+                    action_extra = (
+                        tool_response.extra if hasattr(tool_response, "extra") else None
+                    )
 
                     logger.info(f"| ✅ Tool '{action_name}' completed")
-                    logger.info(f"| 📄 Result: {str(action_result)}")
+                    logger.info(f"| 📄 Result: {action_result!s}")
 
                     action_dict = action.model_dump()
                     action_dict["output"] = action_result
@@ -238,13 +265,17 @@ class ToolCallingAgent(Agent):
                     record_extra = {}
                     record_extra.update(action_dict)
                     if action_extra is not None:
-                        record_extra['extra'] = action_extra.model_dump()
+                        record_extra["extra"] = action_extra.model_dump()
                     record_data["actions"].append(record_extra)
 
                     if action_name == "done":
                         done = True
                         result = action_result
-                        reasoning = action_extra.data.get('reasoning', None) if action_extra and action_extra.data else None
+                        reasoning = (
+                            action_extra.data.get("reasoning", None)
+                            if action_extra and action_extra.data
+                            else None
+                        )
                         break
 
             event_data = {
@@ -252,7 +283,7 @@ class ToolCallingAgent(Agent):
                 "evaluation_previous_goal": evaluation_previous_goal,
                 "memory": memory,
                 "next_goal": next_goal,
-                "actions": action_results
+                "actions": action_results,
             }
 
             if record is not None:
@@ -270,24 +301,18 @@ class ToolCallingAgent(Agent):
                     data=event_data,
                     agent_name=self.name,
                     task_id=task_id,
-                    ctx=ctx
+                    ctx=ctx,
                 )
 
         except Exception as e:
             logger.error(f"| Error in thinking and tool step: {e}")
 
-        response_dict = {
-            "done": done,
-            "result": result,
-            "reasoning": reasoning
-        }
+        response_dict = {"done": done, "result": result, "reasoning": reasoning}
         return response_dict
 
-    async def __call__(self,
-                  task: str,
-                  files: Optional[List[str]] = None,
-                  **kwargs
-                  ) -> AgentResponse:
+    async def __call__(
+        self, task: str, files: list[str] | None = None, **kwargs
+    ) -> AgentResponse:
         """执行组件调用并返回结果。"""
         logger.info(f"| 🚀 Starting ToolCallingAgent: {task}")
 
@@ -300,7 +325,9 @@ class ToolCallingAgent(Agent):
 
         if files:
             logger.info(f"| 📂 Attached files: {files}")
-            files = await asyncio.gather(*[self._extract_file_content(file) for file in files])
+            files = await asyncio.gather(
+                *[self._extract_file_content(file) for file in files]
+            )
             enhanced_task = await self._generate_enhanced_task(task, files)
         else:
             enhanced_task = task
@@ -308,7 +335,7 @@ class ToolCallingAgent(Agent):
         # 处理记忆或缓存状态。
         memory_name = self.memory_name
 
-        task_id = "task_" + datetime.now().strftime("%Y%m%d-%H%M%S")
+        task_id = "task_" + datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
 
         logger.info(f"| 📝 Context ID: {ctx.id}, Task ID: {task_id}")
 
@@ -321,13 +348,15 @@ class ToolCallingAgent(Agent):
                 memory_name=memory_name,
                 step_number=0,
                 event_type=EventType.TASK_START,
-                data=dict(task=enhanced_task),
+                data={"task": enhanced_task},
                 agent_name=self.name,
                 task_id=task_id,
-                ctx=ctx
+                ctx=ctx,
             )
         else:
-            logger.info(f"| ⏭️ Memory disabled (use_memory={self.use_memory}), skipping session management")
+            logger.info(
+                f"| ⏭️ Memory disabled (use_memory={self.use_memory}), skipping session management"
+            )
 
         # 初始化相关状态。
         messages = await self._get_messages(enhanced_task, ctx=ctx)
@@ -336,17 +365,21 @@ class ToolCallingAgent(Agent):
         step_number = 0
 
         while step_number < self.max_steps:
-            logger.info(f"| 🔄 Step {step_number+1}/{self.max_steps}")
+            logger.info(f"| 🔄 Step {step_number + 1}/{self.max_steps}")
 
             # 说明相关实现细节。
-            response = await self._think_and_tool(messages, task_id, step_number, ctx=ctx, record=record)
+            response = await self._think_and_tool(
+                messages, task_id, step_number, ctx=ctx, record=record
+            )
             step_number += 1
 
             # 持久化相关数据。
-            await tracer.add_record(observation=record.observation,
-                                        tool=record.tool,
-                                        task_id=task_id,
-                                        ctx=ctx)
+            await tracer.add_record(
+                observation=record.observation,
+                tool=record.tool,
+                task_id=task_id,
+                ctx=ctx,
+            )
             await tracer.save_to_json(self.tracer_save_path)
 
             # 持久化相关数据。
@@ -361,7 +394,7 @@ class ToolCallingAgent(Agent):
             response = {
                 "done": False,
                 "result": "The task has not been completed.",
-                "reasoning": "Reached the maximum number of steps."
+                "reasoning": "Reached the maximum number of steps.",
             }
 
         # 处理记忆或缓存状态。
@@ -376,7 +409,7 @@ class ToolCallingAgent(Agent):
                 data=response,
                 agent_name=self.name,
                 task_id=task_id,
-                ctx=ctx
+                ctx=ctx,
             )
 
             # 持久化相关数据。
@@ -390,7 +423,5 @@ class ToolCallingAgent(Agent):
         return AgentResponse(
             success=response["done"],
             message=response["result"],
-            extra=AgentExtra(
-                data=response
-            )
+            extra=AgentExtra(data=response),
         )

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Union
 
 from src.environment.filesystem.exceptions import InvalidPathError, PathTraversalError
 
@@ -22,12 +21,12 @@ class PathPolicy:
         absolute = path.resolve()
         try:
             return absolute.relative_to(self._base_dir)
-        except ValueError as exc:
+        except ValueError:
             # 组装并返回结果。
             # 处理文件与路径。
             return absolute
 
-    def resolve_relative(self, relative: Union[str, Path]) -> Path:
+    def resolve_relative(self, relative: str | Path) -> Path:
         if isinstance(relative, str):
             relative = Path(relative)
 

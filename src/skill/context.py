@@ -1,44 +1,58 @@
 """提供上下文管理相关实现。"""
 
-import os
+import builtins
 import json
+import os
 import re
 import shutil
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from src.logger import logger
 from src.config import config
-from src.skill.types import SkillConfig, SkillResponse, SkillExtra
+from src.logger import logger
+from src.message.types import HumanMessage, SystemMessage
 from src.model import model_manager
-from src.message.types import SystemMessage, HumanMessage
 from src.session import SessionContext
-from src.utils import assemble_project_path, file_lock
+from src.skill.types import SkillConfig, SkillExtra, SkillResponse
+from src.utils import (
+    assemble_project_path,
+    file_lock,
+    read_json_file,
+    read_text_file,
+    write_json_file,
+    write_text_file,
+)
 from src.version import version_manager
-
 
 DEFAULT_SKILLS_DIR = Path(__file__).resolve().parent / "default_skills"
 
 
 class SkillContextManager(BaseModel):
     """定义 `SkillContextManager`，封装相关数据与行为。"""
+
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="allow")
 
-    base_dir: str = Field(default=None, description="Base directory for skill runtime data")
-    save_path: str = Field(default=None, description="Path to persist loaded skill configs")
-    contract_path: str = Field(default=None, description="Path to save the skill contract")
+    base_dir: str = Field(
+        default=None, description="Base directory for skill runtime data"
+    )
+    save_path: str = Field(
+        default=None, description="Path to persist loaded skill configs"
+    )
+    contract_path: str = Field(
+        default=None, description="Path to save the skill contract"
+    )
 
-    _skill_configs: Dict[str, SkillConfig] = {}
-    _skill_history_versions: Dict[str, Dict[str, SkillConfig]] = {}
+    _skill_configs: dict[str, SkillConfig] = {}
+    _skill_history_versions: dict[str, dict[str, SkillConfig]] = {}
 
     def __init__(
         self,
-        base_dir: Optional[str] = None,
-        save_path: Optional[str] = None,
-        contract_path: Optional[str] = None,
+        base_dir: str | None = None,
+        save_path: str | None = None,
+        contract_path: str | None = None,
         **kwargs,
     ):
         super().__init__(**kwargs)
@@ -59,8 +73,8 @@ class SkillContextManager(BaseModel):
         else:
             self.contract_path = os.path.join(self.base_dir, "contract.md")
 
-        self._skill_configs: Dict[str, SkillConfig] = {}
-        self._skill_history_versions: Dict[str, Dict[str, SkillConfig]] = {}
+        self._skill_configs: dict[str, SkillConfig] = {}
+        self._skill_history_versions: dict[str, dict[str, SkillConfig]] = {}
 
         logger.info(f"| 📁 Skill context manager base directory: {self.base_dir}")
 
@@ -68,9 +82,9 @@ class SkillContextManager(BaseModel):
     # 说明相关实现细节。
     # ------------------------------------------------------------------
 
-    async def initialize(self, skill_names: Optional[List[str]] = None):
+    async def initialize(self, skill_names: list[str] | None = None):
         """初始化组件及其依赖资源。"""
-        discovered: Dict[str, SkillConfig] = {}
+        discovered: dict[str, SkillConfig] = {}
 
         # 加载所需数据。
         default_configs = await self._load_from_directory(DEFAULT_SKILLS_DIR)
@@ -81,20 +95,29 @@ class SkillContextManager(BaseModel):
         for name, persisted_cfg in persisted_configs.items():
             if name in discovered:
                 existing = discovered[name]
-                if version_manager.compare_versions(persisted_cfg.version, existing.version) > 0:
-                    logger.info(f"| 🔄 Overriding skill '{name}' from directory (v{existing.version}) with persisted (v{persisted_cfg.version})")
+                if (
+                    version_manager.compare_versions(
+                        persisted_cfg.version, existing.version
+                    )
+                    > 0
+                ):
+                    logger.info(
+                        f"| 🔄 Overriding skill '{name}' from directory (v{existing.version}) with persisted (v{persisted_cfg.version})"
+                    )
                     discovered[name] = persisted_cfg
             else:
                 discovered[name] = persisted_cfg
 
         # 处理输入参数。
         if skill_names is not None:
-            filtered: Dict[str, SkillConfig] = {}
+            filtered: dict[str, SkillConfig] = {}
             for name in skill_names:
                 if name in discovered:
                     filtered[name] = discovered[name]
                 else:
-                    logger.warning(f"| ⚠️ Requested skill '{name}' not found in discovered skills")
+                    logger.warning(
+                        f"| ⚠️ Requested skill '{name}' not found in discovered skills"
+                    )
             discovered = filtered
 
         # 注册相关组件。
@@ -107,21 +130,25 @@ class SkillContextManager(BaseModel):
             self._skill_history_versions[name][skill_config.version] = skill_config
 
             await version_manager.register_version("skill", name, skill_config.version)
-            logger.info(f"| 🎯 Skill '{name}' v{skill_config.version} loaded from {skill_config.skill_dir}")
+            logger.info(
+                f"| 🎯 Skill '{name}' v{skill_config.version} loaded from {skill_config.skill_dir}"
+            )
 
         # 持久化相关数据。
         await self.save_to_json()
         await self.save_contract()
 
-        logger.info(f"| ✅ Skills initialization completed — {len(self._skill_configs)} skill(s) loaded")
+        logger.info(
+            f"| ✅ Skills initialization completed — {len(self._skill_configs)} skill(s) loaded"
+        )
 
     # ------------------------------------------------------------------
     # 处理文件与路径。
     # ------------------------------------------------------------------
 
-    async def _load_from_directory(self, root_dir: Path) -> Dict[str, SkillConfig]:
+    async def _load_from_directory(self, root_dir: Path) -> dict[str, SkillConfig]:
         """实现 `_load_from_directory` 的业务逻辑。"""
-        configs: Dict[str, SkillConfig] = {}
+        configs: dict[str, SkillConfig] = {}
 
         if not root_dir.exists():
             logger.info(f"| 📂 Skill directory does not exist, skipping: {root_dir}")
@@ -152,19 +179,25 @@ class SkillContextManager(BaseModel):
         description = frontmatter.get("description", "")
         version = frontmatter.get("version", "1.0.0")
         require_grad = str(frontmatter.get("require_grad", "false")).lower() == "true"
-        metadata = {k: v for k, v in frontmatter.items() if k not in ("name", "description", "version", "require_grad")}
+        metadata = {
+            k: v
+            for k, v in frontmatter.items()
+            if k not in ("name", "description", "version", "require_grad")
+        }
 
         scripts_dir = skill_dir / "scripts"
-        scripts: List[str] = []
+        scripts: list[str] = []
         if scripts_dir.is_dir():
             scripts = [str(p) for p in sorted(scripts_dir.rglob("*")) if p.is_file()]
 
         resources_dir = skill_dir / "resources"
-        resources: List[str] = []
+        resources: list[str] = []
         if resources_dir.is_dir():
-            resources = [str(p) for p in sorted(resources_dir.rglob("*")) if p.is_file()]
+            resources = [
+                str(p) for p in sorted(resources_dir.rglob("*")) if p.is_file()
+            ]
 
-        reference_files: List[str] = []
+        reference_files: list[str] = []
         for md_file in sorted(skill_dir.glob("*.md")):
             if md_file.name == "SKILL.md":
                 continue
@@ -183,16 +216,15 @@ class SkillContextManager(BaseModel):
             reference_files=reference_files,
         )
 
-    async def _load_from_json(self) -> Dict[str, SkillConfig]:
+    async def _load_from_json(self) -> dict[str, SkillConfig]:
         """实现 `_load_from_json` 的业务逻辑。"""
-        configs: Dict[str, SkillConfig] = {}
+        configs: dict[str, SkillConfig] = {}
 
         if not os.path.exists(self.save_path):
             return configs
 
         try:
-            with open(self.save_path, "r", encoding="utf-8") as f:
-                load_data = json.load(f)
+            load_data = await read_json_file(self.save_path)
         except json.JSONDecodeError as e:
             logger.warning(f"| ⚠️ Failed to parse skill config JSON: {e}")
             return configs
@@ -206,8 +238,8 @@ class SkillContextManager(BaseModel):
                 if not versions:
                     continue
 
-                version_map: Dict[str, SkillConfig] = {}
-                current_cfg: Optional[SkillConfig] = None
+                version_map: dict[str, SkillConfig] = {}
+                current_cfg: SkillConfig | None = None
 
                 for ver_str, ver_data in versions.items():
                     cfg = SkillConfig(**ver_data)
@@ -225,7 +257,9 @@ class SkillContextManager(BaseModel):
                     configs[skill_name] = list(version_map.values())[-1]
 
                 for cfg in version_map.values():
-                    await version_manager.register_version("skill", skill_name, cfg.version)
+                    await version_manager.register_version(
+                        "skill", skill_name, cfg.version
+                    )
 
             except Exception as e:
                 logger.error(f"| ❌ Failed to load skill '{skill_name}' from JSON: {e}")
@@ -234,7 +268,7 @@ class SkillContextManager(BaseModel):
         return configs
 
     @staticmethod
-    def _parse_frontmatter(text: str) -> tuple[Dict[str, Any], str]:
+    def _parse_frontmatter(text: str) -> tuple[dict[str, Any], str]:
         """实现 `_parse_frontmatter` 的业务逻辑。"""
         pattern = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
         match = pattern.match(text)
@@ -243,9 +277,9 @@ class SkillContextManager(BaseModel):
             return {}, text
 
         yaml_block = match.group(1)
-        body = text[match.end():]
+        body = text[match.end() :]
 
-        frontmatter: Dict[str, Any] = {}
+        frontmatter: dict[str, Any] = {}
         for line in yaml_block.splitlines():
             line = line.strip()
             if not line or line.startswith("#"):
@@ -296,7 +330,7 @@ class SkillContextManager(BaseModel):
         self,
         skill_dir: str,
         override: bool = False,
-        version: Optional[str] = None,
+        version: str | None = None,
     ) -> SkillConfig:
         """实现 `register` 的业务逻辑。"""
         skill_dir_path = Path(skill_dir)
@@ -308,7 +342,9 @@ class SkillContextManager(BaseModel):
         if version is not None:
             skill_config.version = version
         else:
-            existing_version = await version_manager.get_version("skill", skill_config.name)
+            existing_version = await version_manager.get_version(
+                "skill", skill_config.name
+            )
             if existing_version and skill_config.version == "1.0.0":
                 skill_config.version = existing_version
 
@@ -322,24 +358,30 @@ class SkillContextManager(BaseModel):
 
         if skill_config.name not in self._skill_history_versions:
             self._skill_history_versions[skill_config.name] = {}
-        self._skill_history_versions[skill_config.name][skill_config.version] = skill_config
+        self._skill_history_versions[skill_config.name][skill_config.version] = (
+            skill_config
+        )
 
-        await version_manager.register_version("skill", skill_config.name, skill_config.version)
+        await version_manager.register_version(
+            "skill", skill_config.name, skill_config.version
+        )
 
         await self.save_to_json()
         await self.save_contract()
 
-        logger.info(f"| 📝 Registered skill: {skill_config.name} v{skill_config.version}")
+        logger.info(
+            f"| 📝 Registered skill: {skill_config.name} v{skill_config.version}"
+        )
         return skill_config
 
     async def update(
         self,
         name: str,
-        skill_dir: Optional[str] = None,
-        new_version: Optional[str] = None,
-        description: Optional[str] = None,
-        content: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        skill_dir: str | None = None,
+        new_version: str | None = None,
+        description: str | None = None,
+        content: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SkillConfig:
         """实现 `update` 的业务逻辑。"""
         original = self._skill_configs.get(name)
@@ -359,7 +401,9 @@ class SkillContextManager(BaseModel):
             updated.metadata = metadata
 
         if new_version is None:
-            new_version = await version_manager.generate_next_version("skill", name, "patch")
+            new_version = await version_manager.generate_next_version(
+                "skill", name, "patch"
+            )
         updated.version = new_version
 
         updated.text = self._build_text_representation(updated)
@@ -370,14 +414,18 @@ class SkillContextManager(BaseModel):
         self._skill_history_versions[name][new_version] = updated
 
         await version_manager.register_version(
-            "skill", name, new_version,
+            "skill",
+            name,
+            new_version,
             description=description or f"Updated from {original.version}",
         )
 
         await self.save_to_json()
         await self.save_contract()
 
-        logger.info(f"| 🔄 Updated skill '{name}' from v{original.version} to v{new_version}")
+        logger.info(
+            f"| 🔄 Updated skill '{name}' from v{original.version} to v{new_version}"
+        )
         return updated
 
     async def unregister(self, name: str) -> bool:
@@ -398,9 +446,9 @@ class SkillContextManager(BaseModel):
     async def copy(
         self,
         name: str,
-        new_name: Optional[str] = None,
-        new_version: Optional[str] = None,
-        new_skill_dir: Optional[str] = None,
+        new_name: str | None = None,
+        new_version: str | None = None,
+        new_skill_dir: str | None = None,
     ) -> SkillConfig:
         """实现 `copy` 的业务逻辑。"""
         original = self._skill_configs.get(name)
@@ -421,7 +469,9 @@ class SkillContextManager(BaseModel):
 
         if new_version is None:
             if new_name == name:
-                new_version = await version_manager.generate_next_version("skill", new_name, "patch")
+                new_version = await version_manager.generate_next_version(
+                    "skill", new_name, "patch"
+                )
             else:
                 new_version = await version_manager.get_version("skill", new_name)
         copied.version = new_version
@@ -434,17 +484,21 @@ class SkillContextManager(BaseModel):
         self._skill_history_versions[new_name][new_version] = copied
 
         await version_manager.register_version(
-            "skill", new_name, new_version,
+            "skill",
+            new_name,
+            new_version,
             description=f"Copied from {name}@{original.version}",
         )
 
         await self.save_to_json()
         await self.save_contract()
 
-        logger.info(f"| 📋 Copied skill '{name}' v{original.version} -> '{new_name}' v{new_version}")
+        logger.info(
+            f"| 📋 Copied skill '{name}' v{original.version} -> '{new_name}' v{new_version}"
+        )
         return copied
 
-    async def restore(self, name: str, version: str) -> Optional[SkillConfig]:
+    async def restore(self, name: str, version: str) -> SkillConfig | None:
         """实现 `restore` 的业务逻辑。"""
         version_map = self._skill_history_versions.get(name, {})
         target = version_map.get(version)
@@ -473,15 +527,15 @@ class SkillContextManager(BaseModel):
     # 检索所需信息。
     # ------------------------------------------------------------------
 
-    async def get(self, skill_name: str) -> Optional[SkillConfig]:
+    async def get(self, skill_name: str) -> SkillConfig | None:
         """实现 `get` 的业务逻辑。"""
         return self._skill_configs.get(skill_name)
 
-    async def get_info(self, skill_name: str) -> Optional[SkillConfig]:
+    async def get_info(self, skill_name: str) -> SkillConfig | None:
         """获取与 `get_info` 对应的数据或状态。"""
         return self._skill_configs.get(skill_name)
 
-    async def list(self) -> List[str]:
+    async def list(self) -> list[str]:
         """实现 `list` 的业务逻辑。"""
         return list(self._skill_configs.keys())
 
@@ -489,19 +543,19 @@ class SkillContextManager(BaseModel):
     # 说明相关实现细节。
     # ------------------------------------------------------------------
 
-    async def get_context(self, skill_names: Optional[List[str]] = None) -> str:
+    async def get_context(self, skill_names: builtins.list[str] | None = None) -> str:
         """获取与 `get_context` 对应的数据或状态。"""
         if not self._skill_configs:
             return ""
 
         targets = skill_names if skill_names else list(self._skill_configs.keys())
-        parts: List[str] = []
+        parts: list[str] = []
 
         for name in targets:
             cfg = self._skill_configs.get(name)
             if cfg is None:
                 continue
-            parts.append(f"<skill name=\"{cfg.name}\">\n{cfg.text}\n</skill>")
+            parts.append(f'<skill name="{cfg.name}">\n{cfg.text}\n</skill>')
 
         return "\n".join(parts)
 
@@ -509,10 +563,10 @@ class SkillContextManager(BaseModel):
     # 持久化相关数据。
     # ------------------------------------------------------------------
 
-    async def save_contract(self, skill_names: Optional[List[str]] = None):
+    async def save_contract(self, skill_names: builtins.list[str] | None = None):
         """保存与 `save_contract` 对应的数据或状态。"""
         targets = skill_names if skill_names else list(self._skill_configs.keys())
-        lines: List[str] = []
+        lines: list[str] = []
         for idx, name in enumerate(targets):
             cfg = self._skill_configs.get(name)
             if cfg is None:
@@ -521,39 +575,43 @@ class SkillContextManager(BaseModel):
 
         contract_text = "---\n".join(lines)
         os.makedirs(os.path.dirname(self.contract_path), exist_ok=True)
-        with open(self.contract_path, "w", encoding="utf-8") as f:
-            f.write(contract_text)
-        logger.info(f"| 📝 Saved {len(lines)} skill(s) contract to {self.contract_path}")
+        await write_text_file(self.contract_path, contract_text)
+        logger.info(
+            f"| 📝 Saved {len(lines)} skill(s) contract to {self.contract_path}"
+        )
 
     async def load_contract(self) -> str:
         """加载与 `load_contract` 对应的数据或状态。"""
         if not os.path.exists(self.contract_path):
             return ""
-        with open(self.contract_path, "r", encoding="utf-8") as f:
-            return f.read()
+        return await read_text_file(self.contract_path)
 
     # ------------------------------------------------------------------
     # 持久化相关数据。
     # ------------------------------------------------------------------
 
-    async def save_to_json(self, file_path: Optional[str] = None) -> str:
+    async def save_to_json(self, file_path: str | None = None) -> str:
         """保存与 `save_to_json` 对应的数据或状态。"""
         file_path = file_path or self.save_path
 
         async with file_lock(file_path):
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
 
-            save_data: Dict[str, Any] = {
+            save_data: dict[str, Any] = {
                 "metadata": {
-                    "saved_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "saved_at": datetime.now(timezone.utc).strftime(
+                        "%Y-%m-%d %H:%M:%S"
+                    ),
                     "num_skills": len(self._skill_configs),
-                    "num_versions": sum(len(v) for v in self._skill_history_versions.values()),
+                    "num_versions": sum(
+                        len(v) for v in self._skill_history_versions.values()
+                    ),
                 },
                 "skills": {},
             }
 
             for skill_name, version_map in self._skill_history_versions.items():
-                versions_data: Dict[str, Any] = {}
+                versions_data: dict[str, Any] = {}
                 for ver, cfg in version_map.items():
                     versions_data[ver] = cfg.model_dump()
 
@@ -563,7 +621,10 @@ class SkillContextManager(BaseModel):
                 if current_version is None and version_map:
                     latest = None
                     for v in version_map:
-                        if latest is None or version_manager.compare_versions(v, latest) > 0:
+                        if (
+                            latest is None
+                            or version_manager.compare_versions(v, latest) > 0
+                        ):
                             latest = v
                     current_version = latest
 
@@ -572,13 +633,14 @@ class SkillContextManager(BaseModel):
                     "versions": versions_data,
                 }
 
-            with open(file_path, "w", encoding="utf-8") as f:
-                json.dump(save_data, f, indent=4, ensure_ascii=False)
+            await write_json_file(file_path, save_data)
 
-            logger.info(f"| 💾 Saved {len(self._skill_configs)} skill(s) with version history to {file_path}")
+            logger.info(
+                f"| 💾 Saved {len(self._skill_configs)} skill(s) with version history to {file_path}"
+            )
             return file_path
 
-    async def load_from_json(self, file_path: Optional[str] = None) -> bool:
+    async def load_from_json(self, file_path: str | None = None) -> bool:
         """加载与 `load_from_json` 对应的数据或状态。"""
         file_path = file_path or self.save_path
 
@@ -588,8 +650,7 @@ class SkillContextManager(BaseModel):
                 return False
 
             try:
-                with open(file_path, "r", encoding="utf-8") as f:
-                    load_data = json.load(f)
+                load_data = await read_json_file(file_path)
 
                 skills_data = load_data.get("skills", {})
                 loaded = 0
@@ -602,16 +663,18 @@ class SkillContextManager(BaseModel):
 
                         current_version_str = skill_data.get("current_version")
 
-                        version_configs: Dict[str, SkillConfig] = {}
-                        latest_cfg: Optional[SkillConfig] = None
+                        version_configs: dict[str, SkillConfig] = {}
+                        latest_cfg: SkillConfig | None = None
 
                         for ver_str, ver_data in versions.items():
                             cfg = SkillConfig(**ver_data)
                             version_configs[ver_str] = cfg
 
-                            if current_version_str and cfg.version == current_version_str:
-                                latest_cfg = cfg
-                            elif latest_cfg is None:
+                            if (
+                                current_version_str
+                                and cfg.version == current_version_str
+                                or latest_cfg is None
+                            ):
                                 latest_cfg = cfg
 
                         self._skill_history_versions[skill_name] = version_configs
@@ -619,13 +682,17 @@ class SkillContextManager(BaseModel):
                         if latest_cfg:
                             self._skill_configs[skill_name] = latest_cfg
                             for cfg in version_configs.values():
-                                await version_manager.register_version("skill", skill_name, cfg.version)
+                                await version_manager.register_version(
+                                    "skill", skill_name, cfg.version
+                                )
                             loaded += 1
 
                     except Exception as e:
                         logger.error(f"| ❌ Failed to load skill '{skill_name}': {e}")
 
-                logger.info(f"| 📂 Loaded {loaded} skill(s) with version history from {file_path}")
+                logger.info(
+                    f"| 📂 Loaded {loaded} skill(s) with version history from {file_path}"
+                )
                 return True
 
             except Exception as e:
@@ -639,8 +706,8 @@ class SkillContextManager(BaseModel):
     async def __call__(
         self,
         name: str,
-        input: Dict[str, Any],
-        model_name: Optional[str] = None,
+        input: dict[str, Any],
+        model_name: str | None = None,
         ctx: SessionContext = None,
         **kwargs,
     ) -> SkillResponse:
@@ -655,7 +722,9 @@ class SkillContextManager(BaseModel):
                 message=f"Skill '{name}' not found. Available skills: {list(self._skill_configs.keys())}",
             )
 
-        logger.info(f"| 🎯 Executing skill '{name}' v{skill_config.version} with input: {input}")
+        logger.info(
+            f"| 🎯 Executing skill '{name}' v{skill_config.version} with input: {input}"
+        )
 
         system_content = (
             "You are a skill execution engine. You are given a skill's full instructions "
@@ -670,7 +739,9 @@ class SkillContextManager(BaseModel):
         if skill_config.scripts:
             system_content += f"Available scripts: {', '.join(skill_config.scripts)}\n"
         if skill_config.resources:
-            system_content += f"Available resources: {', '.join(skill_config.resources)}\n"
+            system_content += (
+                f"Available resources: {', '.join(skill_config.resources)}\n"
+            )
 
         user_content = (
             f"## Skill Instructions (from SKILL.md)\n\n"
@@ -685,7 +756,9 @@ class SkillContextManager(BaseModel):
             HumanMessage(content=user_content),
         ]
 
-        effective_model = model_name or getattr(config, "model_name", "openrouter/gemini-3-flash-preview")
+        effective_model = model_name or getattr(
+            config, "model_name", "openrouter/gemini-3-flash-preview"
+        )
 
         try:
             llm_response = await model_manager(

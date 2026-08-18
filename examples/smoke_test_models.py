@@ -24,9 +24,7 @@ async def main() -> int:
     await manager.initialize(settings)
 
     print(f"聊天模型：{settings.primary_model}")
-    chat_result = await manager.achat(
-        [HumanMessage(content="请只回复：连接成功")]
-    )
+    chat_result = await manager.achat([HumanMessage(content="请只回复：连接成功")])
     if chat_result.success:
         print(f"聊天测试：成功，响应={chat_result.message[:100]}")
     else:

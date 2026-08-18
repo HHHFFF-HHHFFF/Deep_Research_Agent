@@ -1,15 +1,15 @@
 from __future__ import annotations
 
+import threading
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
-from typing import Optional, Union
-import threading
 
 
 @dataclass
 class CacheEntry:
     """定义 `CacheEntry`，封装相关数据与行为。"""
+
     data: bytes
     timestamp: float
     access_count: int = 0
@@ -23,7 +23,12 @@ class CacheEntry:
 class LRUByteCache:
     """定义 `LRUByteCache`，封装相关数据与行为。"""
 
-    def __init__(self, max_entries: int = 256, max_bytes_total: int = 64 * 1024 * 1024, ttl_seconds: int = 3600) -> None:
+    def __init__(
+        self,
+        max_entries: int = 256,
+        max_bytes_total: int = 64 * 1024 * 1024,
+        ttl_seconds: int = 3600,
+    ) -> None:
         """初始化实例。"""
         self._max_entries = max_entries
         self._max_bytes_total = max_bytes_total
@@ -34,7 +39,7 @@ class LRUByteCache:
         self._hits = 0
         self._misses = 0
 
-    def get(self, key: str) -> Optional[bytes]:
+    def get(self, key: str) -> bytes | None:
         """实现 `get` 的业务逻辑。"""
         with self._lock:
             entry = self._entries.get(key)
@@ -97,7 +102,8 @@ class LRUByteCache:
 
         # 移除相关数据或组件。
         expired_keys = [
-            key for key, entry in self._entries.items()
+            key
+            for key, entry in self._entries.items()
             if current_time - entry.timestamp > self._ttl_seconds
         ]
         for key in expired_keys:
@@ -119,12 +125,12 @@ class LRUByteCache:
             total_requests = self._hits + self._misses
             hit_rate = (self._hits / total_requests * 100) if total_requests > 0 else 0
             return {
-                'entries': len(self._entries),
-                'total_bytes': self._total_bytes,
-                'max_entries': self._max_entries,
-                'max_bytes': self._max_bytes_total,
-                'hits': self._hits,
-                'misses': self._misses,
-                'hit_rate': hit_rate,
-                'ttl_seconds': self._ttl_seconds
+                "entries": len(self._entries),
+                "total_bytes": self._total_bytes,
+                "max_entries": self._max_entries,
+                "max_bytes": self._max_bytes_total,
+                "hits": self._hits,
+                "misses": self._misses,
+                "hit_rate": hit_rate,
+                "ttl_seconds": self._ttl_seconds,
             }

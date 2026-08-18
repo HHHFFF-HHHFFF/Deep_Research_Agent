@@ -1,49 +1,62 @@
 """提供general memory system相关实现。"""
 
-from typing import Dict, List, Any, Optional, Union
-from datetime import datetime
-from pydantic import BaseModel, Field
-import json
-import os
 import asyncio
+import os
+from datetime import datetime
+from typing import Any
+
+from pydantic import BaseModel, Field
 
 from src.logger import logger
+from src.memory.types import ChatEvent, EventType, Importance, Insight, Memory, Summary
+from src.message.types import AssistantMessage, HumanMessage, Message, SystemMessage
 from src.model import model_manager
-from src.utils import dedent, generate_unique_id
-from src.message.types import HumanMessage, AssistantMessage, Message, SystemMessage
-from src.memory.types import ChatEvent, Summary, Insight, EventType, Importance, Memory
-from src.session import SessionContext
-from src.utils import file_lock
 from src.registry import MEMORY_SYSTEM
+from src.session import SessionContext
+from src.utils import (
+    dedent,
+    file_lock,
+    generate_unique_id,
+    read_json_file,
+    write_json_file,
+)
+
 
 class CombinedMemoryOutput(BaseModel):
     """定义 `CombinedMemoryOutput`，封装相关数据与行为。"""
-    summaries: List[Summary] = Field(description="List of summary points")
-    insights: List[Insight] = Field(description="List of insights extracted from the conversation")
+
+    summaries: list[Summary] = Field(description="List of summary points")
+    insights: list[Insight] = Field(
+        description="List of insights extracted from the conversation"
+    )
+
 
 class ProcessDecision(BaseModel):
     should_process: bool = Field(description="Whether to process the memory")
     reasoning: str = Field(description="Reasoning for the decision")
 
+
 class CombinedMemory:
     """定义 `CombinedMemory`，封装相关数据与行为。"""
-    def __init__(self,
-                 model_name: str = "gpt-4.1",
-                 max_summaries: int = 20,
-                 max_insights: int = 100,
-                 ):
+
+    def __init__(
+        self,
+        model_name: str = "gpt-4.1",
+        max_summaries: int = 20,
+        max_insights: int = 100,
+    ):
 
         self.model_name = model_name
         self.max_summaries = max_summaries
         self.max_insights = max_insights
 
-        self.events: List[ChatEvent] = []
+        self.events: list[ChatEvent] = []
         # 处理版本与历史记录。
-        self.candidate_chat_history: List[Message] = []
-        self.summaries: List[Summary] = []
-        self.insights: List[Insight] = []
+        self.candidate_chat_history: list[Message] = []
+        self.summaries: list[Summary] = []
+        self.insights: list[Insight] = []
 
-    async def add_event(self, event: Union[ChatEvent, List[ChatEvent]]):
+    async def add_event(self, event: ChatEvent | list[ChatEvent]):
         """添加与 `add_event` 对应的数据或状态。"""
         # 处理版本与历史记录。
         if isinstance(event, ChatEvent):
@@ -51,12 +64,17 @@ class CombinedMemory:
         else:
             events = event
 
-        for event in events:
-            self.events.append(event)
-            if event.event_type == EventType.TOOL_STEP or event.event_type == EventType.TASK_END:
-                content = str(event)
-                if event.agent_name:
-                    self.candidate_chat_history.append(AssistantMessage(content=content))
+        for current_event in events:
+            self.events.append(current_event)
+            if (
+                current_event.event_type == EventType.TOOL_STEP
+                or current_event.event_type == EventType.TASK_END
+            ):
+                content = str(current_event)
+                if current_event.agent_name:
+                    self.candidate_chat_history.append(
+                        AssistantMessage(content=content)
+                    )
                 else:
                     self.candidate_chat_history.append(HumanMessage(content=content))
 
@@ -72,7 +90,7 @@ class CombinedMemory:
         for msg in self.candidate_chat_history:
             if isinstance(msg, HumanMessage):
                 new_lines.append(
-                dedent(f"""
+                    dedent(f"""
                 <human>
                 {msg.content}
                 </human>
@@ -80,7 +98,7 @@ class CombinedMemory:
                 )
             elif isinstance(msg, AssistantMessage):
                 new_lines.append(
-                dedent(f"""
+                    dedent(f"""
                 <assistant>
                 {msg.content}
                 </assistant>
@@ -129,15 +147,17 @@ class CombinedMemory:
         try:
             # 创建所需对象。
             messages = [
-                SystemMessage(content="You are a memory processing decision system. Always respond with valid JSON."),
-                HumanMessage(content=decision_prompt)
+                SystemMessage(
+                    content="You are a memory processing decision system. Always respond with valid JSON."
+                ),
+                HumanMessage(content=decision_prompt),
             ]
 
             # 组装并返回结果。
             response = await model_manager(
                 model=self.model_name,
                 messages=messages,
-                response_format=ProcessDecision
+                response_format=ProcessDecision,
             )
             if not response.extra or not response.extra.parsed_model:
                 logger.warning("Response does not contain parsed_model")
@@ -204,15 +224,17 @@ class CombinedMemory:
         try:
             # 创建所需对象。
             messages = [
-                SystemMessage(content="You are a memory processing system. Always respond with valid JSON."),
-                HumanMessage(content=prompt)
+                SystemMessage(
+                    content="You are a memory processing system. Always respond with valid JSON."
+                ),
+                HumanMessage(content=prompt),
             ]
 
             # 组装并返回结果。
             response = await model_manager(
                 model=self.model_name,
                 messages=messages,
-                response_format=CombinedMemoryOutput
+                response_format=CombinedMemoryOutput,
             )
 
             # 校验输入与当前状态。
@@ -220,7 +242,9 @@ class CombinedMemory:
                 raise ValueError(f"Model call failed: {response.message}")
 
             if not response.extra or not response.extra.parsed_model:
-                raise ValueError(f"Response does not contain parsed_model. Response: {response.message}")
+                raise ValueError(
+                    f"Response does not contain parsed_model. Response: {response.message}"
+                )
 
             combined_memory_output_response = response.extra.parsed_model
 
@@ -249,7 +273,7 @@ class CombinedMemory:
 
         # 说明相关实现细节。
         if len(self.insights) > self.max_insights:
-            self.insights = self.insights[:self.max_insights]
+            self.insights = self.insights[: self.max_insights]
 
     async def _sort_and_limit_summaries(self):
         """实现 `_sort_and_limit_summaries` 的业务逻辑。"""
@@ -258,7 +282,7 @@ class CombinedMemory:
 
         # 说明相关实现细节。
         if len(self.summaries) > self.max_summaries:
-            self.summaries = self.summaries[:self.max_summaries]
+            self.summaries = self.summaries[: self.max_summaries]
 
     def clear(self):
         """实现 `clear` 的业务逻辑。"""
@@ -271,36 +295,40 @@ class CombinedMemory:
         """实现 `size` 的业务逻辑。"""
         return len(self.events)
 
-    async def get_event(self, n: Optional[int] = None) -> List[ChatEvent]:
+    async def get_event(self, n: int | None = None) -> list[ChatEvent]:
         if n is None:
             return self.events
 
         return self.events[-n:] if len(self.events) > n else self.events
 
-    async def get_summary(self, n: Optional[int] = None) -> List[Summary]:
+    async def get_summary(self, n: int | None = None) -> list[Summary]:
         if n is None:
             return self.summaries
         return self.summaries[-n:] if len(self.summaries) > n else self.summaries
 
-    async def get_insight(self, n: Optional[int] = None) -> List[Insight]:
+    async def get_insight(self, n: int | None = None) -> list[Insight]:
         if n is None:
             return self.insights
         return self.insights[-n:] if len(self.insights) > n else self.insights
+
 
 @MEMORY_SYSTEM.register_module(force=True)
 class GeneralMemorySystem(Memory):
     """定义 `GeneralMemorySystem`，封装相关数据与行为。"""
 
-    require_grad: bool = Field(default=False, description="Whether the memory system requires gradients")
+    require_grad: bool = Field(
+        default=False, description="Whether the memory system requires gradients"
+    )
 
-    def __init__(self,
-                 base_dir: Optional[str] = None,
-                 model_name: str = "gpt-4.1",
-                 max_summaries: int = 10,
-                 max_insights: int = 10,
-                 require_grad: bool = False,
-                 **kwargs
-                 ):
+    def __init__(
+        self,
+        base_dir: str | None = None,
+        model_name: str = "gpt-4.1",
+        max_summaries: int = 10,
+        max_insights: int = 10,
+        require_grad: bool = False,
+        **kwargs,
+    ):
         super().__init__(require_grad=require_grad, **kwargs)
 
         if base_dir is not None:
@@ -317,15 +345,17 @@ class GeneralMemorySystem(Memory):
 
         # 处理记忆或缓存状态。
         # 处理记忆或缓存状态。
-        self._session_memory_cache: Dict[str, CombinedMemory] = {}
+        self._session_memory_cache: dict[str, CombinedMemory] = {}
         # 执行异步任务。
-        self._session_locks: Dict[str, asyncio.Lock] = {}
+        self._session_locks: dict[str, asyncio.Lock] = {}
         # 处理记忆或缓存状态。
         self._cache_lock = asyncio.Lock()
         # 处理记忆或缓存状态。
-        self._pending_process_tasks: Dict[str, asyncio.Task] = {}
+        self._pending_process_tasks: dict[str, asyncio.Task] = {}
 
-    async def _get_or_create_session_memory(self, id: str) -> tuple[CombinedMemory, asyncio.Lock]:
+    async def _get_or_create_session_memory(
+        self, id: str
+    ) -> tuple[CombinedMemory, asyncio.Lock]:
         """实现 `_get_or_create_session_memory` 的业务逻辑。"""
         async with self._cache_lock:
             # 创建所需对象。
@@ -337,7 +367,7 @@ class GeneralMemorySystem(Memory):
                 self._session_memory_cache[id] = CombinedMemory(
                     model_name=self.model_name,
                     max_summaries=self.max_summaries,
-                    max_insights=self.max_insights
+                    max_insights=self.max_insights,
                 )
                 logger.info(f"| 📝 Created new session memory cache for id: {id}")
             else:
@@ -370,19 +400,20 @@ class GeneralMemorySystem(Memory):
             if self._pending_process_tasks.get(id) is current_task:
                 self._pending_process_tasks.pop(id, None)
 
-    async def start_session(self,
-                            agent_name: Optional[str] = None,
-                            task_id: Optional[str] = None,
-                            description: Optional[str] = None,
-                            ctx: SessionContext = None,
-                            **kwargs
-                            ) -> str:
+    async def start_session(
+        self,
+        agent_name: str | None = None,
+        task_id: str | None = None,
+        description: str | None = None,
+        ctx: SessionContext = None,
+        **kwargs,
+    ) -> str:
         """实现 `start_session` 的业务逻辑。"""
         # 加载所需数据。
         if self.save_path and os.path.exists(self.save_path):
             logger.info(f"| 📂 Loading memory from JSON: {self.save_path}")
             await self.load_from_json(self.save_path)
-            logger.info(f"| ✅ Memory loaded from JSON")
+            logger.info("| ✅ Memory loaded from JSON")
 
         if ctx is None:
             ctx = SessionContext()
@@ -402,7 +433,9 @@ class GeneralMemorySystem(Memory):
             try:
                 await asyncio.wait_for(self._pending_process_tasks[id], timeout=60.0)
             except asyncio.TimeoutError:
-                logger.warning(f"| ⚠️ Timeout waiting for memory processing on session {id}")
+                logger.warning(
+                    f"| ⚠️ Timeout waiting for memory processing on session {id}"
+                )
             except Exception as e:
                 logger.warning(f"| ⚠️ Error waiting for memory processing: {e}")
 
@@ -413,14 +446,16 @@ class GeneralMemorySystem(Memory):
         # 清理并释放相关资源。
         await self._cleanup_session_memory(id)
 
-    async def add_event(self,
-                        step_number: int,
-                        event_type,
-                        data: Any,
-                        agent_name: str,
-                        task_id: Optional[str] = None,
-                        ctx: SessionContext = None,
-                        **kwargs):
+    async def add_event(
+        self,
+        step_number: int,
+        event_type,
+        data: Any,
+        agent_name: str,
+        task_id: str | None = None,
+        ctx: SessionContext = None,
+        **kwargs,
+    ):
         """添加与 `add_event` 对应的数据或状态。"""
         id = ctx.id
 
@@ -431,10 +466,14 @@ class GeneralMemorySystem(Memory):
                 try:
                     event_type = EventType(event_type)
                 except ValueError:
-                    logger.warning(f"| ⚠️ Invalid event_type '{event_type}', defaulting to TOOL_STEP")
+                    logger.warning(
+                        f"| ⚠️ Invalid event_type '{event_type}', defaulting to TOOL_STEP"
+                    )
                     event_type = EventType.TOOL_STEP
             else:
-                logger.warning(f"| ⚠️ Invalid event_type type '{type(event_type)}', defaulting to TOOL_STEP")
+                logger.warning(
+                    f"| ⚠️ Invalid event_type type '{type(event_type)}', defaulting to TOOL_STEP"
+                )
                 event_type = EventType.TOOL_STEP
 
         event_id = generate_unique_id(prefix="event")
@@ -446,7 +485,7 @@ class GeneralMemorySystem(Memory):
             data=data,
             agent_name=agent_name,
             task_id=task_id,
-            session_id = id
+            session_id=id,
         )
 
         # 处理记忆或缓存状态。
@@ -476,21 +515,27 @@ class GeneralMemorySystem(Memory):
             await self._session_memory_cache[id].clear()
             await self._cleanup_session_memory(id)
 
-    async def get_event(self, n: Optional[int] = None, ctx: SessionContext = None, **kwargs) -> List[ChatEvent]:
+    async def get_event(
+        self, n: int | None = None, ctx: SessionContext = None, **kwargs
+    ) -> list[ChatEvent]:
         """获取与 `get_event` 对应的数据或状态。"""
         id = ctx.id
         if id in self._session_memory_cache:
             return await self._session_memory_cache[id].get_event(n=n)
         return []
 
-    async def get_summary(self, n: Optional[int] = None, ctx: SessionContext = None, **kwargs) -> List[Summary]:
+    async def get_summary(
+        self, n: int | None = None, ctx: SessionContext = None, **kwargs
+    ) -> list[Summary]:
         """获取与 `get_summary` 对应的数据或状态。"""
         id = ctx.id
         if id in self._session_memory_cache:
             return await self._session_memory_cache[id].get_summary(n=n)
         return []
 
-    async def get_insight(self, n: Optional[int] = None, ctx: SessionContext = None, **kwargs) -> List[Insight]:
+    async def get_insight(
+        self, n: int | None = None, ctx: SessionContext = None, **kwargs
+    ) -> list[Insight]:
         """获取与 `get_insight` 对应的数据或状态。"""
         id = ctx.id
         if id in self._session_memory_cache:
@@ -505,32 +550,37 @@ class GeneralMemorySystem(Memory):
             # 说明相关实现细节。
             metadata = {
                 "memory_system_type": "general_memory_system",
-                "session_ids": list(self._session_memory_cache.keys())
+                "session_ids": list(self._session_memory_cache.keys()),
             }
 
             # 说明相关实现细节。
             sessions = {}
             async with self._cache_lock:
-                for id in self._session_memory_cache.keys():
+                for id in self._session_memory_cache:
                     session_memory = self._session_memory_cache[id]
                     session_data = {
                         "session_memory": {
-                            "events": [event.model_dump(mode="json") for event in session_memory.events],
-                            "summaries": [summary.model_dump(mode="json") for summary in session_memory.summaries],
-                            "insights": [insight.model_dump(mode="json") for insight in session_memory.insights],
+                            "events": [
+                                event.model_dump(mode="json")
+                                for event in session_memory.events
+                            ],
+                            "summaries": [
+                                summary.model_dump(mode="json")
+                                for summary in session_memory.summaries
+                            ],
+                            "insights": [
+                                insight.model_dump(mode="json")
+                                for insight in session_memory.insights
+                            ],
                         }
                     }
                     sessions[id] = session_data
 
             # 持久化相关数据。
-            save_data = {
-                "metadata": metadata,
-                "sessions": sessions
-            }
+            save_data = {"metadata": metadata, "sessions": sessions}
 
             # 持久化相关数据。
-            with open(file_path, "w", encoding="utf-8") as f:
-                json.dump(save_data, f, indent=4, ensure_ascii=False)
+            await write_json_file(file_path, save_data)
 
             logger.debug(f"| 💾 Memory saved to {file_path}")
             return str(file_path)
@@ -546,9 +596,8 @@ class GeneralMemorySystem(Memory):
 
             try:
                 logger.debug(f"| 📖 Reading JSON file: {file_path}")
-                with open(file_path, "r", encoding="utf-8") as f:
-                    load_data = json.load(f)
-                logger.debug(f"| ✅ JSON file read successfully")
+                load_data = await read_json_file(file_path)
+                logger.debug("| ✅ JSON file read successfully")
 
                 # 校验输入与当前状态。
                 if "metadata" not in load_data or "sessions" not in load_data:
@@ -571,7 +620,7 @@ class GeneralMemorySystem(Memory):
                             self._session_memory_cache[id] = CombinedMemory(
                                 model_name=self.model_name,
                                 max_summaries=self.max_summaries,
-                                max_insights=self.max_insights
+                                max_insights=self.max_insights,
                             )
                             self._session_locks[id] = asyncio.Lock()
 
@@ -583,9 +632,13 @@ class GeneralMemorySystem(Memory):
                             events = []
                             for event_data in session_memory_data["events"]:
                                 if event_data.get("timestamp"):
-                                    event_data["timestamp"] = datetime.fromisoformat(event_data["timestamp"])
+                                    event_data["timestamp"] = datetime.fromisoformat(
+                                        event_data["timestamp"]
+                                    )
                                 if event_data.get("event_type"):
-                                    event_data["event_type"] = EventType(event_data["event_type"])
+                                    event_data["event_type"] = EventType(
+                                        event_data["event_type"]
+                                    )
                                 events.append(ChatEvent(**event_data))
                             session_memory.events = events
 
@@ -594,7 +647,9 @@ class GeneralMemorySystem(Memory):
                             summaries = []
                             for summary_data in session_memory_data["summaries"]:
                                 if summary_data.get("importance"):
-                                    summary_data["importance"] = Importance(summary_data["importance"])
+                                    summary_data["importance"] = Importance(
+                                        summary_data["importance"]
+                                    )
                                 summaries.append(Summary(**summary_data))
                             session_memory.summaries = summaries
 
@@ -603,7 +658,9 @@ class GeneralMemorySystem(Memory):
                             insights = []
                             for insight_data in session_memory_data["insights"]:
                                 if insight_data.get("importance"):
-                                    insight_data["importance"] = Importance(insight_data["importance"])
+                                    insight_data["importance"] = Importance(
+                                        insight_data["importance"]
+                                    )
                                 insights.append(Insight(**insight_data))
                             session_memory.insights = insights
 
@@ -611,5 +668,7 @@ class GeneralMemorySystem(Memory):
                 return True
 
             except Exception as e:
-                logger.error(f"| ❌ Failed to load memory from {file_path}: {e}", exc_info=True)
+                logger.error(
+                    f"| ❌ Failed to load memory from {file_path}: {e}", exc_info=True
+                )
                 return False

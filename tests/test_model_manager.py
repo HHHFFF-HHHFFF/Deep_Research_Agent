@@ -69,7 +69,9 @@ async def test_embedding_uses_independent_model(settings: ModelRuntimeSettings) 
 
 
 @pytest.mark.asyncio
-async def test_manager_only_registers_configured_models(settings: ModelRuntimeSettings) -> None:
+async def test_manager_only_registers_configured_models(
+    settings: ModelRuntimeSettings,
+) -> None:
     manager = ModelManager()
     await manager.initialize(settings)
 

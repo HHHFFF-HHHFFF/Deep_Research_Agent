@@ -1,7 +1,8 @@
-from .log import logger, LogLevel, Logger, YELLOW_HEX
+from .log import YELLOW_HEX, Logger, LogLevel, logger
 
-__all__ = ["logger",
-           "LogLevel",
-           "Logger",
-           "YELLOW_HEX",
-           ]
+__all__ = [
+    "YELLOW_HEX",
+    "LogLevel",
+    "Logger",
+    "logger",
+]

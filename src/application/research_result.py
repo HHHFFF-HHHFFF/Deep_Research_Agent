@@ -128,7 +128,10 @@ class ResearchResult(BaseModel):
         ):
             raise ValueError("已完成的研究结果必须包含报告内容或输出文件")
 
-        if self.status in {ResearchStatus.FAILED, ResearchStatus.TIMED_OUT} and not self.error:
+        if (
+            self.status in {ResearchStatus.FAILED, ResearchStatus.TIMED_OUT}
+            and not self.error
+        ):
             raise ValueError("失败或超时的研究结果必须包含错误说明")
 
         if self.started_at and self.finished_at < self.started_at:

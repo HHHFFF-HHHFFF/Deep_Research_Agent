@@ -4,5 +4,5 @@ deep_researcher_tool = {
     # 使用项目自己的网页检索工具，避免绑定某个厂商的内置搜索插件。
     "use_llm_search": False,
     "search_llm_models": [],
-    "require_grad": False
+    "require_grad": False,
 }

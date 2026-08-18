@@ -41,7 +41,9 @@ class DeterministicEmbeddingModel:
     async def __call__(self, **kwargs: Any) -> LLMResponse:
         self.calls.append(kwargs)
         messages = kwargs.get("messages") or []
-        embeddings = [[float(index + 1)] * self.dimension for index, _ in enumerate(messages)]
+        embeddings = [
+            [float(index + 1)] * self.dimension for index, _ in enumerate(messages)
+        ]
         return LLMResponse(
             success=True,
             message=f"生成了 {len(embeddings)} 个测试向量",

@@ -1,53 +1,65 @@
 """提供file system environment相关实现。"""
 
 from pathlib import Path
-from typing import List, Optional, Any, Dict, Type, Union
-from pydantic import BaseModel, Field, ConfigDict
+from typing import Any
+
+from pydantic import ConfigDict, Field
 
 from src.environment.filesystem.service import FileSystemService
 from src.environment.filesystem.types import (
-    FileReadRequest,
-    FileWriteRequest,
-    FileReplaceRequest,
-    FileDeleteRequest,
-    FileCopyRequest,
-    FileMoveRequest,
     DirectoryCreateRequest,
     DirectoryDeleteRequest,
+    FileChangePermissionsRequest,
+    FileCopyRequest,
+    FileDeleteRequest,
     FileListRequest,
-    FileTreeRequest,
+    FileMoveRequest,
+    FileReadRequest,
+    FileReplaceRequest,
     FileSearchRequest,
     FileStatRequest,
-    FileChangePermissionsRequest
+    FileTreeRequest,
+    FileWriteRequest,
 )
-from src.logger import logger
-from src.utils import assemble_project_path
-from src.environment.types import Environment
-from src.utils import dedent
 from src.environment.server import ecp
+from src.environment.types import Environment
+from src.logger import logger
 from src.registry import ENVIRONMENT
+from src.utils import assemble_project_path, dedent
+
 
 @ENVIRONMENT.register_module(force=True)
 class FileSystemEnvironment(Environment):
     """定义 `FileSystemEnvironment`，封装相关数据与行为。"""
+
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="allow")
 
-    name: str = Field(default="file_system", description="The name of the file system environment.")
-    description: str = Field(default="File system environment for file operations", description="The description of the file system environment.")
-    metadata: Dict[str, Any] = Field(default={
-        "has_vision": False,
-        "additional_rules": {
-            "state": "The state of the file system environment.",
-        }
-    }, description="The metadata of the file system environment.")
-    require_grad: bool = Field(default=False, description="Whether the environment requires gradients")
+    name: str = Field(
+        default="file_system", description="The name of the file system environment."
+    )
+    description: str = Field(
+        default="File system environment for file operations",
+        description="The description of the file system environment.",
+    )
+    metadata: dict[str, Any] = Field(
+        default={
+            "has_vision": False,
+            "additional_rules": {
+                "state": "The state of the file system environment.",
+            },
+        },
+        description="The metadata of the file system environment.",
+    )
+    require_grad: bool = Field(
+        default=False, description="Whether the environment requires gradients"
+    )
 
     def __init__(
         self,
-        base_dir: Optional[Union[str, Path]] = None,
+        base_dir: str | Path | None = None,
         max_file_size: int = 1024 * 1024,  # 1MB
         require_grad: bool = False,
-        **kwargs
+        **kwargs,
     ):
         """初始化实例。"""
         super().__init__(**kwargs)
@@ -55,14 +67,14 @@ class FileSystemEnvironment(Environment):
         self.max_file_size = max_file_size
 
         # 初始化相关状态。
-        self.file_system_service = FileSystemService(
-            base_dir=self.base_dir
-        )
+        self.file_system_service = FileSystemService(base_dir=self.base_dir)
 
     async def initialize(self) -> None:
         """初始化组件及其依赖资源。"""
 
-        self.metadata["additional_rules"]["state"] = f"File System Environment at: {self.base_dir}. All `file_path` in the actions should be absolute paths based on this directory.\n"
+        self.metadata["additional_rules"]["state"] = (
+            f"File System Environment at: {self.base_dir}. All `file_path` in the actions should be absolute paths based on this directory.\n"
+        )
 
         logger.info(f"| 🗂️ File System Environment initialized at: {self.base_dir}")
 
@@ -70,19 +82,18 @@ class FileSystemEnvironment(Environment):
         """释放组件占用的资源。"""
         logger.info("| 🧹 File System Environment cleanup completed")
 
-    @ecp.action(name = "read",
-                description = "Read a file from the file system.")
-    async def read(self,
-                    file_path: str,
-                    start_line: Optional[int] = None,
-                    end_line: Optional[int] = None,
-                    **kwargs) -> Dict[str, Any]:
+    @ecp.action(name="read", description="Read a file from the file system.")
+    async def read(
+        self,
+        file_path: str,
+        start_line: int | None = None,
+        end_line: int | None = None,
+        **kwargs,
+    ) -> dict[str, Any]:
         """实现 `read` 的业务逻辑。"""
         try:
             request = FileReadRequest(
-                path=Path(file_path),
-                start_line=start_line,
-                end_line=end_line
+                path=Path(file_path), start_line=start_line, end_line=end_line
             )
             result = await self.file_system_service.read(request)
 
@@ -98,32 +109,21 @@ class FileSystemEnvironment(Environment):
             else:
                 message = result.message
 
-            return {
-                "success": result.success,
-                "message": message,
-                "extra": extra
-            }
+            return {"success": result.success, "message": message, "extra": extra}
         except Exception as e:
             return {
                 "success": False,
-                "message": f"Failed to read file: {str(e)}",
-                "extra": {"error": str(e), "file_path": file_path}
+                "message": f"Failed to read file: {e!s}",
+                "extra": {"error": str(e), "file_path": file_path},
             }
 
-    @ecp.action(name = "write",
-                description = "Write content to a file.")
-    async def write(self,
-                    file_path: str,
-                    content: str,
-                    mode: str = "w",
-                    **kwargs) -> Dict[str, Any]:
+    @ecp.action(name="write", description="Write content to a file.")
+    async def write(
+        self, file_path: str, content: str, mode: str = "w", **kwargs
+    ) -> dict[str, Any]:
         """实现 `write` 的业务逻辑。"""
         try:
-            request = FileWriteRequest(
-                path=Path(file_path),
-                content=content,
-                mode=mode
-            )
+            request = FileWriteRequest(path=Path(file_path), content=content, mode=mode)
             result = await self.file_system_service.write(request)
 
             extra = result.extra.copy() if result.extra else {}
@@ -132,24 +132,25 @@ class FileSystemEnvironment(Environment):
             return {
                 "success": result.success,
                 "message": result.message,
-                "extra": extra
+                "extra": extra,
             }
         except Exception as e:
             return {
                 "success": False,
-                "message": f"Failed to write file: {str(e)}",
-                "extra": {"error": str(e), "file_path": file_path}
+                "message": f"Failed to write file: {e!s}",
+                "extra": {"error": str(e), "file_path": file_path},
             }
 
-    @ecp.action(name = "replace",
-                description = "Replace a string in a file.")
-    async def replace(self,
-                       file_path: str,
-                       old_string: str,
-                       new_string: str,
-                       start_line: Optional[int] = None,
-                       end_line: Optional[int] = None,
-                       **kwargs) -> Dict[str, Any]:
+    @ecp.action(name="replace", description="Replace a string in a file.")
+    async def replace(
+        self,
+        file_path: str,
+        old_string: str,
+        new_string: str,
+        start_line: int | None = None,
+        end_line: int | None = None,
+        **kwargs,
+    ) -> dict[str, Any]:
         """实现 `replace` 的业务逻辑。"""
         try:
             request = FileReplaceRequest(
@@ -157,7 +158,7 @@ class FileSystemEnvironment(Environment):
                 old_string=old_string,
                 new_string=new_string,
                 start_line=start_line,
-                end_line=end_line
+                end_line=end_line,
             )
             result = await self.file_system_service.replace(request)
 
@@ -167,18 +168,17 @@ class FileSystemEnvironment(Environment):
             return {
                 "success": result.success,
                 "message": result.message,
-                "extra": extra
+                "extra": extra,
             }
         except Exception as e:
             return {
                 "success": False,
-                "message": f"Failed to replace text: {str(e)}",
-                "extra": {"error": str(e), "file_path": file_path}
+                "message": f"Failed to replace text: {e!s}",
+                "extra": {"error": str(e), "file_path": file_path},
             }
 
-    @ecp.action(name = "delete",
-                description = "Delete a file from the file system.")
-    async def delete(self, file_path: str, **kwargs) -> Dict[str, Any]:
+    @ecp.action(name="delete", description="Delete a file from the file system.")
+    async def delete(self, file_path: str, **kwargs) -> dict[str, Any]:
         """实现 `delete` 的业务逻辑。"""
         try:
             request = FileDeleteRequest(path=Path(file_path))
@@ -190,18 +190,17 @@ class FileSystemEnvironment(Environment):
             return {
                 "success": result.success,
                 "message": result.message,
-                "extra": extra
+                "extra": extra,
             }
         except Exception as e:
             return {
                 "success": False,
-                "message": f"Failed to delete file: {str(e)}",
-                "extra": {"error": str(e), "file_path": file_path}
+                "message": f"Failed to delete file: {e!s}",
+                "extra": {"error": str(e), "file_path": file_path},
             }
 
-    @ecp.action(name = "copy",
-                description = "Copy a file from source to destination.")
-    async def copy(self, src_path: str, dst_path: str, **kwargs) -> Dict[str, Any]:
+    @ecp.action(name="copy", description="Copy a file from source to destination.")
+    async def copy(self, src_path: str, dst_path: str, **kwargs) -> dict[str, Any]:
         """实现 `copy` 的业务逻辑。"""
         try:
             request = FileCopyRequest(src_path=Path(src_path), dst_path=Path(dst_path))
@@ -214,24 +213,20 @@ class FileSystemEnvironment(Environment):
             return {
                 "success": result.success,
                 "message": result.message,
-                "extra": extra
+                "extra": extra,
             }
         except Exception as e:
             return {
                 "success": False,
-                "message": f"Failed to copy file: {str(e)}",
-                "extra": {"error": str(e), "src_path": src_path, "dst_path": dst_path}
+                "message": f"Failed to copy file: {e!s}",
+                "extra": {"error": str(e), "src_path": src_path, "dst_path": dst_path},
             }
 
-    @ecp.action(name = "move",
-                description = "Move a file from source to destination.")
-    async def move(self, src_path: str, dst_path: str, **kwargs) -> Dict[str, Any]:
+    @ecp.action(name="move", description="Move a file from source to destination.")
+    async def move(self, src_path: str, dst_path: str, **kwargs) -> dict[str, Any]:
         """实现 `move` 的业务逻辑。"""
         try:
-            request = FileMoveRequest(
-                src_path=Path(src_path),
-                dst_path=Path(dst_path)
-            )
+            request = FileMoveRequest(src_path=Path(src_path), dst_path=Path(dst_path))
             result = await self.file_system_service.rename(request)
 
             extra = result.extra.copy() if result.extra else {}
@@ -241,24 +236,20 @@ class FileSystemEnvironment(Environment):
             return {
                 "success": result.success,
                 "message": result.message,
-                "extra": extra
+                "extra": extra,
             }
         except Exception as e:
             return {
                 "success": False,
-                "message": f"Failed to move file: {str(e)}",
-                "extra": {"error": str(e), "src_path": src_path, "dst_path": dst_path}
+                "message": f"Failed to move file: {e!s}",
+                "extra": {"error": str(e), "src_path": src_path, "dst_path": dst_path},
             }
 
-    @ecp.action(name = "rename",
-                description = "Rename a file or directory.")
-    async def rename(self, old_path: str, new_path: str, **kwargs) -> Dict[str, Any]:
+    @ecp.action(name="rename", description="Rename a file or directory.")
+    async def rename(self, old_path: str, new_path: str, **kwargs) -> dict[str, Any]:
         """实现 `rename` 的业务逻辑。"""
         try:
-            request = FileMoveRequest(
-                src_path=Path(old_path),
-                dst_path=Path(new_path)
-            )
+            request = FileMoveRequest(src_path=Path(old_path), dst_path=Path(new_path))
             result = await self.file_system_service.rename(request)
 
             extra = result.extra.copy() if result.extra else {}
@@ -268,20 +259,19 @@ class FileSystemEnvironment(Environment):
             return {
                 "success": result.success,
                 "message": result.message,
-                "extra": extra
+                "extra": extra,
             }
         except Exception as e:
             return {
                 "success": False,
-                "message": f"Failed to rename: {str(e)}",
-                "extra": {"error": str(e), "old_path": old_path, "new_path": new_path}
+                "message": f"Failed to rename: {e!s}",
+                "extra": {"error": str(e), "old_path": old_path, "new_path": new_path},
             }
 
-    @ecp.action(name = "get_info",
-                description = "Get detailed information about a file.")
-    async def get_info(self, file_path: str,
-                        include_stats: Optional[bool] = True,
-                        **kwargs) -> Dict[str, Any]:
+    @ecp.action(name="get_info", description="Get detailed information about a file.")
+    async def get_info(
+        self, file_path: str, include_stats: bool | None = True, **kwargs
+    ) -> dict[str, Any]:
         """获取与 `get_info` 对应的数据或状态。"""
         try:
             request = FileStatRequest(path=Path(file_path))
@@ -305,21 +295,16 @@ class FileSystemEnvironment(Environment):
             else:
                 message = result.message
 
-            return {
-                "success": result.success,
-                "message": message,
-                "extra": extra
-            }
+            return {"success": result.success, "message": message, "extra": extra}
         except Exception as e:
             return {
                 "success": False,
-                "message": f"Failed to get file info: {str(e)}",
-                "extra": {"error": str(e), "file_path": file_path}
+                "message": f"Failed to get file info: {e!s}",
+                "extra": {"error": str(e), "file_path": file_path},
             }
 
-    @ecp.action(name = "create_dir",
-                description = "Create a directory.")
-    async def create_dir(self, dir_path: str, **kwargs) -> Dict[str, Any]:
+    @ecp.action(name="create_dir", description="Create a directory.")
+    async def create_dir(self, dir_path: str, **kwargs) -> dict[str, Any]:
         """创建与 `create_dir` 对应的数据或状态。"""
         try:
             request = DirectoryCreateRequest(path=Path(dir_path))
@@ -331,18 +316,17 @@ class FileSystemEnvironment(Environment):
             return {
                 "success": result.success,
                 "message": result.message,
-                "extra": extra
+                "extra": extra,
             }
         except Exception as e:
             return {
                 "success": False,
-                "message": f"Failed to create directory: {str(e)}",
-                "extra": {"error": str(e), "dir_path": dir_path}
+                "message": f"Failed to create directory: {e!s}",
+                "extra": {"error": str(e), "dir_path": dir_path},
             }
 
-    @ecp.action(name = "delete_dir",
-                description = "Delete a directory.")
-    async def delete_dir(self, dir_path: str, **kwargs) -> Dict[str, Any]:
+    @ecp.action(name="delete_dir", description="Delete a directory.")
+    async def delete_dir(self, dir_path: str, **kwargs) -> dict[str, Any]:
         """删除与 `delete_dir` 对应的数据或状态。"""
         try:
             request = DirectoryDeleteRequest(path=Path(dir_path), recursive=True)
@@ -354,28 +338,27 @@ class FileSystemEnvironment(Environment):
             return {
                 "success": result.success,
                 "message": result.message,
-                "extra": extra
+                "extra": extra,
             }
         except Exception as e:
             return {
                 "success": False,
-                "message": f"Failed to delete directory: {str(e)}",
-                "extra": {"error": str(e), "dir_path": dir_path}
+                "message": f"Failed to delete directory: {e!s}",
+                "extra": {"error": str(e), "dir_path": dir_path},
             }
 
-    @ecp.action(name = "listdir",
-                description = "List directory contents.")
-    async def listdir(self,
-                       dir_path: str,
-                       show_hidden: bool = False,
-                       file_types: Optional[List[str]] = None,
-                       **kwargs) -> Dict[str, Any]:
+    @ecp.action(name="listdir", description="List directory contents.")
+    async def listdir(
+        self,
+        dir_path: str,
+        show_hidden: bool = False,
+        file_types: list[str] | None = None,
+        **kwargs,
+    ) -> dict[str, Any]:
         """实现 `listdir` 的业务逻辑。"""
         try:
             request = FileListRequest(
-                path=Path(dir_path),
-                show_hidden=show_hidden,
-                file_types=file_types
+                path=Path(dir_path), show_hidden=show_hidden, file_types=file_types
             )
             result = await self.file_system_service.listdir(request)
 
@@ -404,27 +387,24 @@ class FileSystemEnvironment(Environment):
             else:
                 message = result.message
 
-            return {
-                "success": result.success,
-                "message": message,
-                "extra": extra
-            }
+            return {"success": result.success, "message": message, "extra": extra}
         except Exception as e:
             return {
                 "success": False,
-                "message": f"Failed to list directory: {str(e)}",
-                "extra": {"error": str(e), "dir_path": dir_path}
+                "message": f"Failed to list directory: {e!s}",
+                "extra": {"error": str(e), "dir_path": dir_path},
             }
 
-    @ecp.action(name = "tree",
-                description = "Show directory tree structure.")
-    async def tree(self,
-                    dir_path: str,
-                    max_depth: Optional[int] = 3,
-                    show_hidden: bool = False,
-                    exclude_patterns: Optional[List[str]] = None,
-                    file_types: Optional[List[str]] = None,
-                    **kwargs) -> Dict[str, Any]:
+    @ecp.action(name="tree", description="Show directory tree structure.")
+    async def tree(
+        self,
+        dir_path: str,
+        max_depth: int | None = 3,
+        show_hidden: bool = False,
+        exclude_patterns: list[str] | None = None,
+        file_types: list[str] | None = None,
+        **kwargs,
+    ) -> dict[str, Any]:
         """实现 `tree` 的业务逻辑。"""
         try:
             request = FileTreeRequest(
@@ -432,7 +412,7 @@ class FileSystemEnvironment(Environment):
                 max_depth=max_depth,
                 show_hidden=show_hidden,
                 exclude_patterns=exclude_patterns,
-                file_types=file_types
+                file_types=file_types,
             )
             result = await self.file_system_service.tree(request)
 
@@ -450,29 +430,23 @@ class FileSystemEnvironment(Environment):
             else:
                 message = result.message
 
-            return {
-                "success": result.success,
-                "message": message,
-                "extra": extra
-            }
+            return {"success": result.success, "message": message, "extra": extra}
         except Exception as e:
             return {
                 "success": False,
-                "message": f"Failed to generate tree: {str(e)}",
-                "extra": {"error": str(e), "dir_path": dir_path}
+                "message": f"Failed to generate tree: {e!s}",
+                "extra": {"error": str(e), "dir_path": dir_path},
             }
 
-    @ecp.action(name = "describe",
-                description = "Describe the file system with directory structure and file information.")
-    async def describe(self, **kwargs) -> Dict[str, Any]:
+    @ecp.action(
+        name="describe",
+        description="Describe the file system with directory structure and file information.",
+    )
+    async def describe(self, **kwargs) -> dict[str, Any]:
         """实现 `describe` 的业务逻辑。"""
         try:
             # 处理文件与路径。
-            request = FileTreeRequest(
-                path=Path("."),
-                max_depth=3,
-                show_hidden=False
-            )
+            request = FileTreeRequest(path=Path("."), max_depth=3, show_hidden=False)
             result = await self.file_system_service.tree(request)
 
             extra = result.extra.copy() if result.extra else {}
@@ -492,28 +466,25 @@ class FileSystemEnvironment(Environment):
             else:
                 message = result.message
 
-            return {
-                "success": result.success,
-                "message": message,
-                "extra": extra
-            }
+            return {"success": result.success, "message": message, "extra": extra}
         except Exception as e:
             return {
                 "success": False,
-                "message": f"Failed to describe file system: {str(e)}",
-                "extra": {"error": str(e), "base_dir": str(self.base_dir)}
+                "message": f"Failed to describe file system: {e!s}",
+                "extra": {"error": str(e), "base_dir": str(self.base_dir)},
             }
 
-    @ecp.action(name = "search",
-                description = "Search for files by name or content.")
-    async def search(self,
-                      search_path: str,
-                      query: str,
-                      search_type: str = "name",
-                      file_types: Optional[List[str]] = None,
-                      case_sensitive: Optional[bool] = False,
-                      max_results: Optional[int] = 50,
-                      **kwargs) -> Dict[str, Any]:
+    @ecp.action(name="search", description="Search for files by name or content.")
+    async def search(
+        self,
+        search_path: str,
+        query: str,
+        search_type: str = "name",
+        file_types: list[str] | None = None,
+        case_sensitive: bool | None = False,
+        max_results: int | None = 50,
+        **kwargs,
+    ) -> dict[str, Any]:
         """实现 `search` 的业务逻辑。"""
         try:
             request = FileSearchRequest(
@@ -522,7 +493,7 @@ class FileSystemEnvironment(Environment):
                 by=search_type,
                 file_types=file_types,
                 case_sensitive=case_sensitive,
-                max_results=max_results
+                max_results=max_results,
             )
             result = await self.file_system_service.search(request)
 
@@ -539,7 +510,9 @@ class FileSystemEnvironment(Environment):
                     for i, search_result in enumerate(results, 1):
                         search_str += f"{i}. {search_result.get('path', 'Unknown')}\n"
                         if search_result.get("matches"):
-                            for match in search_result["matches"][:5]:  # 说明相关实现细节。
+                            for match in search_result["matches"][
+                                :5
+                            ]:  # 说明相关实现细节。
                                 search_str += f"   Line {match.get('line', 0)}: {match.get('text', '')[:100]}...\n"
                         search_str += "\n"
 
@@ -549,24 +522,25 @@ class FileSystemEnvironment(Environment):
             else:
                 message = result.message
 
-            return {
-                "success": result.success,
-                "message": message,
-                "extra": extra
-            }
+            return {"success": result.success, "message": message, "extra": extra}
         except Exception as e:
             return {
                 "success": False,
-                "message": f"Failed to search files: {str(e)}",
-                "extra": {"error": str(e), "search_path": search_path, "query": query}
+                "message": f"Failed to search files: {e!s}",
+                "extra": {"error": str(e), "search_path": search_path, "query": query},
             }
 
-    @ecp.action(name = "change_permissions",
-                description = "Change file or directory permissions.")
-    async def change_permissions(self, file_path: str, permissions: str, **kwargs) -> Dict[str, Any]:
+    @ecp.action(
+        name="change_permissions", description="Change file or directory permissions."
+    )
+    async def change_permissions(
+        self, file_path: str, permissions: str, **kwargs
+    ) -> dict[str, Any]:
         """实现 `change_permissions` 的业务逻辑。"""
         try:
-            request = FileChangePermissionsRequest(path=Path(file_path), permissions=permissions)
+            request = FileChangePermissionsRequest(
+                path=Path(file_path), permissions=permissions
+            )
             result = await self.file_system_service.change_permissions(request)
 
             extra = result.extra.copy() if result.extra else {}
@@ -576,16 +550,20 @@ class FileSystemEnvironment(Environment):
             return {
                 "success": result.success,
                 "message": result.message,
-                "extra": extra
+                "extra": extra,
             }
         except Exception as e:
             return {
                 "success": False,
-                "message": f"Failed to change permissions: {str(e)}",
-                "extra": {"error": str(e), "file_path": file_path, "permissions": permissions}
+                "message": f"Failed to change permissions: {e!s}",
+                "extra": {
+                    "error": str(e),
+                    "file_path": file_path,
+                    "permissions": permissions,
+                },
             }
 
-    async def get_state(self, **kwargs) -> Dict[str, Any]:
+    async def get_state(self, **kwargs) -> dict[str, Any]:
         """获取与 `get_state` 对应的数据或状态。"""
         try:
             describe_result = await self.describe()
@@ -595,15 +573,10 @@ class FileSystemEnvironment(Environment):
                 </info>
             """)
             extra = describe_result["extra"]
-            return {
-                "state": state_str,
-                "extra": extra
-            }
+            return {"state": state_str, "extra": extra}
         except Exception as e:
             logger.error(f"Failed to get file system state: {e}")
             return {
-                "state": f"Failed to get file system state: {str(e)}",
-                "extra": {
-                    "error": str(e)
-                }
+                "state": f"Failed to get file system state: {e!s}",
+                "extra": {"error": str(e)},
             }

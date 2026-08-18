@@ -1,44 +1,52 @@
 """提供执行轨迹相关实现。"""
 
-import json
 import asyncio
 import os
-from typing import List, Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
+from typing import Any
+
 from pydantic import BaseModel, Field
 
-from src.utils import file_lock
 from src.session import SessionContext
+from src.utils import file_lock, read_json_file, write_json_file
 
 
 class Record(BaseModel):
     """定义 `Record`，封装相关数据与行为。"""
 
-    id: Optional[int] = Field(default=None, description="Unique identifier for the record")
-    session_id: Optional[str] = Field(default=None, description="Session ID for this record")
-    task_id: Optional[str] = Field(default=None, description="Task ID for this record")
-    observation: Optional[Any] = Field(default=None, description="Observation data for this execution step")
-    tool: Optional[Any] = Field(default=None, description="Tool calls taken in this execution step")
-    timestamp: Optional[str] = Field(default=None, description="Timestamp of the record in ISO format")
+    id: int | None = Field(default=None, description="Unique identifier for the record")
+    session_id: str | None = Field(
+        default=None, description="Session ID for this record"
+    )
+    task_id: str | None = Field(default=None, description="Task ID for this record")
+    observation: Any | None = Field(
+        default=None, description="Observation data for this execution step"
+    )
+    tool: Any | None = Field(
+        default=None, description="Tool calls taken in this execution step"
+    )
+    timestamp: str | None = Field(
+        default=None, description="Timestamp of the record in ISO format"
+    )
 
 
 class SessionRecords:
     """定义 `SessionRecords`，封装相关数据与行为。"""
 
     def __init__(self):
-        self.records: List[Record] = []
+        self.records: list[Record] = []
         self._next_id: int = 1
 
     def add_record(
         self,
         observation: Any,
         tool: Any = None,
-        task_id: Optional[str] = None,
-        timestamp: Optional[datetime] = None,
+        task_id: str | None = None,
+        timestamp: datetime | None = None,
     ) -> Record:
         """添加与 `add_record` 对应的数据或状态。"""
         if timestamp is None:
-            timestamp = datetime.now()
+            timestamp = datetime.now(timezone.utc)
 
         record = Record(
             id=self._next_id,
@@ -51,30 +59,30 @@ class SessionRecords:
         self.records.append(record)
         return record
 
-    def get_records(self) -> List[Record]:
+    def get_records(self) -> list[Record]:
         """获取与 `get_records` 对应的数据或状态。"""
         return self.records.copy()
 
-    def get_record(self, index: int) -> Optional[Record]:
+    def get_record(self, index: int) -> Record | None:
         """获取与 `get_record` 对应的数据或状态。"""
         if 0 <= index < len(self.records):
             return self.records[index]
         return None
 
-    def get_last_record(self) -> Optional[Record]:
+    def get_last_record(self) -> Record | None:
         """获取与 `get_last_record` 对应的数据或状态。"""
         if len(self.records) > 0:
             return self.records[-1]
         return None
 
-    def get_record_by_id(self, record_id: int) -> Optional[Record]:
+    def get_record_by_id(self, record_id: int) -> Record | None:
         """获取与 `get_record_by_id` 对应的数据或状态。"""
         for record in self.records:
             if record.id == record_id:
                 return record
         return None
 
-    def get_records_by_task_id(self, task_id: str) -> List[Record]:
+    def get_records_by_task_id(self, task_id: str) -> list[Record]:
         """获取与 `get_records_by_task_id` 对应的数据或状态。"""
         return [r for r in self.records if r.task_id == task_id]
 
@@ -93,21 +101,23 @@ class Tracer:
     def __init__(self):
         """初始化实例。"""
         # 处理记忆或缓存状态。
-        self._session_records_cache: Dict[str, SessionRecords] = {}
+        self._session_records_cache: dict[str, SessionRecords] = {}
         # 执行异步任务。
-        self._session_locks: Dict[str, asyncio.Lock] = {}
+        self._session_locks: dict[str, asyncio.Lock] = {}
         # 处理记忆或缓存状态。
         self._cache_lock = asyncio.Lock()
         # 说明相关实现细节。
-        self._current_session_id: Optional[str] = None
+        self._current_session_id: str | None = None
 
-    def _get_id_from_ctx(self, ctx: Optional[SessionContext]) -> Optional[str]:
+    def _get_id_from_ctx(self, ctx: SessionContext | None) -> str | None:
         """实现 `_get_id_from_ctx` 的业务逻辑。"""
         if ctx is None:
             return None
         return ctx.id
 
-    async def _get_or_create_session_records(self, id: str) -> tuple[SessionRecords, asyncio.Lock]:
+    async def _get_or_create_session_records(
+        self, id: str
+    ) -> tuple[SessionRecords, asyncio.Lock]:
         """实现 `_get_or_create_session_records` 的业务逻辑。"""
         async with self._cache_lock:
             if id not in self._session_locks:
@@ -130,9 +140,9 @@ class Tracer:
         self,
         observation: Any,
         tool: Any = None,
-        task_id: Optional[str] = None,
-        timestamp: Optional[datetime] = None,
-        ctx: Optional[SessionContext] = None,
+        task_id: str | None = None,
+        timestamp: datetime | None = None,
+        ctx: SessionContext | None = None,
     ) -> None:
         """添加与 `add_record` 对应的数据或状态。"""
         if ctx is None:
@@ -151,11 +161,13 @@ class Tracer:
 
         self._current_session_id = id
 
-    async def get_records(self, ctx: Optional[SessionContext] = None) -> List[Record]:
+    async def get_records(self, ctx: SessionContext | None = None) -> list[Record]:
         """获取与 `get_records` 对应的数据或状态。"""
         id = self._get_id_from_ctx(ctx)
         if id:
-            session_records, session_lock = await self._get_or_create_session_records(id)
+            session_records, session_lock = await self._get_or_create_session_records(
+                id
+            )
             async with session_lock:
                 return session_records.get_records()
 
@@ -167,8 +179,8 @@ class Tracer:
         return all_records
 
     async def get_record(
-        self, index: int, ctx: Optional[SessionContext] = None
-    ) -> Optional[Record]:
+        self, index: int, ctx: SessionContext | None = None
+    ) -> Record | None:
         """获取与 `get_record` 对应的数据或状态。"""
         id = self._get_id_from_ctx(ctx) or self._current_session_id
         if id is None:
@@ -178,7 +190,7 @@ class Tracer:
         async with session_lock:
             return session_records.get_record(index)
 
-    async def get_last_record(self, ctx: Optional[SessionContext] = None) -> Optional[Record]:
+    async def get_last_record(self, ctx: SessionContext | None = None) -> Record | None:
         """获取与 `get_last_record` 对应的数据或状态。"""
         id = self._get_id_from_ctx(ctx) or self._current_session_id
         if id is None:
@@ -189,12 +201,14 @@ class Tracer:
             return session_records.get_last_record()
 
     async def get_record_by_id(
-        self, record_id: int, ctx: Optional[SessionContext] = None
-    ) -> Optional[Record]:
+        self, record_id: int, ctx: SessionContext | None = None
+    ) -> Record | None:
         """获取与 `get_record_by_id` 对应的数据或状态。"""
         id = self._get_id_from_ctx(ctx)
         if id:
-            session_records, session_lock = await self._get_or_create_session_records(id)
+            session_records, session_lock = await self._get_or_create_session_records(
+                id
+            )
             async with session_lock:
                 return session_records.get_record_by_id(record_id)
 
@@ -206,12 +220,14 @@ class Tracer:
         return None
 
     async def get_records_by_task_id(
-        self, task_id: str, ctx: Optional[SessionContext] = None
-    ) -> List[Record]:
+        self, task_id: str, ctx: SessionContext | None = None
+    ) -> list[Record]:
         """获取与 `get_records_by_task_id` 对应的数据或状态。"""
         id = self._get_id_from_ctx(ctx)
         if id:
-            session_records, session_lock = await self._get_or_create_session_records(id)
+            session_records, session_lock = await self._get_or_create_session_records(
+                id
+            )
             async with session_lock:
                 return session_records.get_records_by_task_id(task_id)
 
@@ -221,7 +237,7 @@ class Tracer:
                 all_records.extend(session_records.get_records_by_task_id(task_id))
         return all_records
 
-    async def clear(self, ctx: Optional[SessionContext] = None) -> None:
+    async def clear(self, ctx: SessionContext | None = None) -> None:
         """实现 `clear` 的业务逻辑。"""
         id = self._get_id_from_ctx(ctx)
         if id:
@@ -264,8 +280,7 @@ class Tracer:
             parent_dir = os.path.dirname(file_path)
             if parent_dir:
                 os.makedirs(parent_dir, exist_ok=True)
-            with open(file_path, "w", encoding="utf-8") as f:
-                json.dump(save_data, f, indent=4, ensure_ascii=False)
+            await write_json_file(file_path, save_data)
 
     async def load_from_json(self, file_path: str) -> None:
         """加载与 `load_from_json` 对应的数据或状态。"""
@@ -275,10 +290,13 @@ class Tracer:
             if not os.path.exists(file_path):
                 raise FileNotFoundError(f"JSON file not found: {file_path}")
 
-            with open(file_path, "r", encoding="utf-8") as f:
-                load_data = json.load(f)
+            load_data = await read_json_file(file_path)
 
-            if not isinstance(load_data, dict) or "metadata" not in load_data or "sessions" not in load_data:
+            if (
+                not isinstance(load_data, dict)
+                or "metadata" not in load_data
+                or "sessions" not in load_data
+            ):
                 raise ValueError(
                     f"Invalid tracer format. Expected {{'metadata': {{...}}, 'sessions': {{...}}}}, "
                     f"got: {type(load_data).__name__}"
@@ -328,7 +346,7 @@ class Tracer:
         """实现 `__len__` 的业务逻辑。"""
         return sum(len(sr.records) for sr in self._session_records_cache.values())
 
-    async def get_count(self, ctx: Optional[SessionContext] = None) -> int:
+    async def get_count(self, ctx: SessionContext | None = None) -> int:
         """获取与 `get_count` 对应的数据或状态。"""
         id = self._get_id_from_ctx(ctx)
         if id:
@@ -336,12 +354,14 @@ class Tracer:
             return len(session_records)
         return sum(len(sr.records) for sr in self._session_records_cache.values())
 
-    async def get_session_ids(self) -> List[str]:
+    async def get_session_ids(self) -> list[str]:
         """获取与 `get_session_ids` 对应的数据或状态。"""
         return list(self._session_records_cache.keys())
 
     def __repr__(self) -> str:
-        total_records = sum(len(sr.records) for sr in self._session_records_cache.values())
+        total_records = sum(
+            len(sr.records) for sr in self._session_records_cache.values()
+        )
         return f"Tracer(records={total_records}, sessions={len(self._session_records_cache)})"
 
     def __str__(self) -> str:

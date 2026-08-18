@@ -1,175 +1,248 @@
+from typing import Literal
+
 from pydantic import BaseModel, Field
-from typing import Literal, List, Union, Optional
+
 
 class ContentPartText(BaseModel):
     """定义 `ContentPartText`，封装相关数据与行为。"""
+
     text: str = Field(description="The text of the content part.")  # type: ignore
-    type: Literal['text'] = Field(default='text', description="The type of the content part.")  # type: ignore
+    type: Literal["text"] = Field(
+        default="text", description="The type of the content part."
+    )  # type: ignore
 
     def __str__(self) -> str:
         return str(self.text)
 
     def __repr__(self) -> str:
-        return f'ContentPartText(text={repr(self.text)})'
+        return f"ContentPartText(text={self.text!r})"
 
-SupportedImageMediaType = Literal['image/jpeg', 'image/png', 'image/gif', 'image/webp']
-SupportedAudioMediaType = Literal['audio/mpeg', 'audio/wav', 'audio/ogg', 'audio/mp3', 'audio/m4a', 'audio/flac']
-SupportedVideoMediaType = Literal['video/mp4', 'video/mpeg', 'video/ogg', 'video/webm', 'video/mov']
-SupportedPdfMediaType = Literal['application/pdf']
+
+SupportedImageMediaType = Literal["image/jpeg", "image/png", "image/gif", "image/webp"]
+SupportedAudioMediaType = Literal[
+    "audio/mpeg", "audio/wav", "audio/ogg", "audio/mp3", "audio/m4a", "audio/flac"
+]
+SupportedVideoMediaType = Literal[
+    "video/mp4", "video/mpeg", "video/ogg", "video/webm", "video/mov"
+]
+SupportedPdfMediaType = Literal["application/pdf"]
+
 
 class AudioURL(BaseModel):
     """定义 `AudioURL`，封装相关数据与行为。"""
-    url: str = Field(description="The URL of the audio.")
-    type: Literal['audio_url'] = Field(default='audio_url', description="The type of the content part.")  # type: ignore
 
-    media_type: SupportedAudioMediaType = Field(default='audio/mp3', description="The media type of the audio.")
+    url: str = Field(description="The URL of the audio.")
+    type: Literal["audio_url"] = Field(
+        default="audio_url", description="The type of the content part."
+    )  # type: ignore
+
+    media_type: SupportedAudioMediaType = Field(
+        default="audio/mp3", description="The media type of the audio."
+    )
 
     def __str__(self) -> str:
         return str(self.url)
 
     def __repr__(self) -> str:
-        return f'AudioURL(url={repr(self.url)}, media_type={repr(self.media_type)})'
+        return f"AudioURL(url={self.url!r}, media_type={self.media_type!r})"
 
 
 class ContentPartAudio(BaseModel):
     """定义 `ContentPartAudio`，封装相关数据与行为。"""
+
     audio_url: AudioURL = Field(description="The URL of the audio.")
-    type: Literal['audio_url'] = Field(default='audio_url', description="The type of the content part.")  # type: ignore
+    type: Literal["audio_url"] = Field(
+        default="audio_url", description="The type of the content part."
+    )  # type: ignore
 
     def __str__(self) -> str:
         return str(self.audio_url)
 
     def __repr__(self) -> str:
-        return f'ContentPartAudio(audio_url={str(self.audio_url)})'
+        return f"ContentPartAudio(audio_url={self.audio_url!s})"
+
 
 class VideoURL(BaseModel):
     """定义 `VideoURL`，封装相关数据与行为。"""
-    url: str = Field(description="The URL of the video.")
-    type: Literal['video_url'] = Field(default='video_url', description="The type of the content part.")  # type: ignore
 
-    media_type: SupportedVideoMediaType = Field(default='video/mp4', description="The media type of the video.")
+    url: str = Field(description="The URL of the video.")
+    type: Literal["video_url"] = Field(
+        default="video_url", description="The type of the content part."
+    )  # type: ignore
+
+    media_type: SupportedVideoMediaType = Field(
+        default="video/mp4", description="The media type of the video."
+    )
 
     def __str__(self) -> str:
         return str(self.url)
 
     def __repr__(self) -> str:
-        return f'VideoURL(url={repr(self.url)}, media_type={repr(self.media_type)})'
+        return f"VideoURL(url={self.url!r}, media_type={self.media_type!r})"
+
 
 class ContentPartVideo(BaseModel):
     """定义 `ContentPartVideo`，封装相关数据与行为。"""
+
     video_url: VideoURL = Field(description="The URL of the video.")
-    type: Literal['video_url'] = Field(default='video_url', description="The type of the content part.")  # type: ignore
+    type: Literal["video_url"] = Field(
+        default="video_url", description="The type of the content part."
+    )  # type: ignore
 
     def __str__(self) -> str:
         return str(self.video_url)
 
     def __repr__(self) -> str:
-        return f'ContentPartVideo(video_url={repr(self.video_url)})'
+        return f"ContentPartVideo(video_url={self.video_url!r})"
+
 
 class ImageURL(BaseModel):
     """定义 `ImageURL`，封装相关数据与行为。"""
-    url: str = Field(description="Either a URL of the image or the base64 encoded image data.")
-    detail: Literal['auto', 'low', 'high'] = Field(default='auto', description="Specifies the detail level of the image.")  # type: ignore
+
+    url: str = Field(
+        description="Either a URL of the image or the base64 encoded image data."
+    )
+    detail: Literal["auto", "low", "high"] = Field(
+        default="auto", description="Specifies the detail level of the image."
+    )  # type: ignore
     """Specifies the detail level of the image.
     Learn more in the
     [Vision guide](https://platform.openai.com/docs/guides/vision#low-or-high-fidelity-image-understanding).
     """
 
     # 说明相关实现细节。
-    media_type: SupportedImageMediaType = 'image/png'
+    media_type: SupportedImageMediaType = "image/png"
 
     def __str__(self) -> str:
         return str(self.url)
 
     def __repr__(self) -> str:
-        return f'ImageURL(url={repr(self.url)}, detail={repr(self.detail)}, media_type={repr(self.media_type)})'
+        return f"ImageURL(url={self.url!r}, detail={self.detail!r}, media_type={self.media_type!r})"
+
 
 class ContentPartImage(BaseModel):
     """定义 `ContentPartImage`，封装相关数据与行为。"""
+
     image_url: ImageURL = Field(description="The URL of the image.")
-    type: Literal['image_url'] = Field(default='image_url', description="The type of the content part.")  # type: ignore
+    type: Literal["image_url"] = Field(
+        default="image_url", description="The type of the content part."
+    )  # type: ignore
 
     def __str__(self) -> str:
         return str(self.image_url)
 
     def __repr__(self) -> str:
-        return f'ContentPartImage(image_url={repr(self.image_url)})'
+        return f"ContentPartImage(image_url={self.image_url!r})"
+
 
 class PdfURL(BaseModel):
     """定义 `PdfURL`，封装相关数据与行为。"""
-    url: str = Field(description="The URL of the PDF.")
-    type: Literal['pdf_url'] = Field(default='pdf_url', description="The type of the content part.")  # type: ignore
 
-    media_type: SupportedPdfMediaType = 'application/pdf'
+    url: str = Field(description="The URL of the PDF.")
+    type: Literal["pdf_url"] = Field(
+        default="pdf_url", description="The type of the content part."
+    )  # type: ignore
+
+    media_type: SupportedPdfMediaType = "application/pdf"
 
     def __str__(self) -> str:
         return str(self.url)
 
     def __repr__(self) -> str:
-        return f'PdfURL(url={repr(self.url)}, media_type={repr(self.media_type)})'
+        return f"PdfURL(url={self.url!r}, media_type={self.media_type!r})"
+
 
 class ContentPartPdf(BaseModel):
     """定义 `ContentPartPdf`，封装相关数据与行为。"""
+
     pdf_url: PdfURL = Field(description="The URL of the PDF.")
-    type: Literal['pdf_url'] = Field(default='pdf_url', description="The type of the content part.")  # type: ignore
+    type: Literal["pdf_url"] = Field(
+        default="pdf_url", description="The type of the content part."
+    )  # type: ignore
 
     def __str__(self) -> str:
         return str(self.pdf_url)
 
     def __repr__(self) -> str:
-        return f'ContentPartPdf(pdf_url={repr(self.pdf_url)})'
+        return f"ContentPartPdf(pdf_url={self.pdf_url!r})"
+
 
 class ContentPartRefusal(BaseModel):
     refusal: str = Field(description="The refusal message by the assistant.")
-    type: Literal['refusal'] = Field(default='refusal', description="The type of the content part.")  # type: ignore
+    type: Literal["refusal"] = Field(
+        default="refusal", description="The type of the content part."
+    )  # type: ignore
 
     def __str__(self) -> str:
         return str(self.refusal)
 
     def __repr__(self) -> str:
-        return f'ContentPartRefusal(refusal={repr(self.refusal)})'
+        return f"ContentPartRefusal(refusal={self.refusal!r})"
+
 
 class Function(BaseModel):
-    arguments: str = Field(description="The arguments to call the function with, as generated by the model in JSON format. Note that the model does not always generate valid JSON, and may hallucinate parameters not defined by your function schema. Validate the arguments in your code before calling your function.")
+    arguments: str = Field(
+        description="The arguments to call the function with, as generated by the model in JSON format. Note that the model does not always generate valid JSON, and may hallucinate parameters not defined by your function schema. Validate the arguments in your code before calling your function."
+    )
     name: str = Field(description="The name of the function to call.")
 
     def __str__(self) -> str:
-        return f'{self.name}({(self.arguments)})'
+        return f"{self.name}({(self.arguments)})"
 
     def __repr__(self) -> str:
         args_repr = repr(self.arguments)
-        return f'Function(name={repr(self.name)}, arguments={args_repr})'
+        return f"Function(name={self.name!r}, arguments={args_repr})"
 
 
 class ToolCall(BaseModel):
     id: str = Field(description="The ID of the tool call.")
     function: Function = Field(description="The function that the model called.")
-    type: Literal['function'] = Field(default='function', description="The type of the tool. Currently, only `function` is supported.")  # type: ignore
+    type: Literal["function"] = Field(
+        default="function",
+        description="The type of the tool. Currently, only `function` is supported.",
+    )  # type: ignore
 
     def __str__(self) -> str:
-        return f'ToolCall[{self.id}]: {str(self.function)}'
+        return f"ToolCall[{self.id}]: {self.function!s}"
 
     def __repr__(self) -> str:
-        return f'ToolCall(id={repr(self.id)}, function={repr(self.function)})'
+        return f"ToolCall(id={self.id!r}, function={self.function!r})"
 
 
 # 说明相关实现细节。
 class Message(BaseModel):
     """定义 `Message`，封装相关数据与行为。"""
-    role: Literal['user', 'system', 'assistant'] = Field(description="The role of the message.")  # type: ignore
-    cache: bool = Field(default=False, description="Whether to cache this message. This is only applicable when using Anthropic models.")  # type: ignore
+
+    role: Literal["user", "system", "assistant"] = Field(
+        description="The role of the message."
+    )  # type: ignore
+    cache: bool = Field(
+        default=False,
+        description="Whether to cache this message. This is only applicable when using Anthropic models.",
+    )  # type: ignore
+
 
 class HumanMessage(Message):
     """定义 `HumanMessage`，封装相关数据与行为。"""
-    role: Literal['user'] = Field(default='user', description="The role of the messages author, in this case `user`.")  # type: ignore
-    content: Union[str, List[Union[
-        ContentPartText,
-        ContentPartImage,
-        ContentPartAudio,
-        ContentPartVideo,
-        ContentPartPdf,
-        ]]] = Field(description="The contents of the user message.")
-    name: Optional[str] = Field(default=None, description="An optional name for the participant. Provides the model information to differentiate between participants of the same role.")  # type: ignore
+
+    role: Literal["user"] = Field(
+        default="user",
+        description="The role of the messages author, in this case `user`.",
+    )  # type: ignore
+    content: (
+        str
+        | list[
+            ContentPartText
+            | ContentPartImage
+            | ContentPartAudio
+            | ContentPartVideo
+            | ContentPartPdf
+        ]
+    ) = Field(description="The contents of the user message.")
+    name: str | None = Field(
+        default=None,
+        description="An optional name for the participant. Provides the model information to differentiate between participants of the same role.",
+    )  # type: ignore
 
     @property
     def text(self) -> str:
@@ -177,27 +250,36 @@ class HumanMessage(Message):
         if isinstance(self.content, str):
             return self.content
         elif isinstance(self.content, list):
-            return '\n'.join([str(part) for part in self.content])
+            return "\n".join([str(part) for part in self.content])
         else:
-            return ''
+            return ""
 
     def __str__(self) -> str:
-        return f'HumanMessage(content={self.text})'
+        return f"HumanMessage(content={self.text})"
 
     def __repr__(self) -> str:
-        return f'HumanMessage(content={repr(self.text)})'
+        return f"HumanMessage(content={self.text!r})"
 
 
 class SystemMessage(Message):
-    role: Literal['system'] = Field(default='system', description="The role of the messages author, in this case `system`.")  # type: ignore
-    content: Union[str, List[Union[
-        ContentPartText,
-        ContentPartImage,
-        ContentPartAudio,
-        ContentPartVideo,
-        ContentPartPdf,
-    ]]] = Field(description="The contents of the system message.")
-    name: Optional[str] = Field(default=None, description="An optional name for the participant. Provides the model information to differentiate between participants of the same role.")  # type: ignore
+    role: Literal["system"] = Field(
+        default="system",
+        description="The role of the messages author, in this case `system`.",
+    )  # type: ignore
+    content: (
+        str
+        | list[
+            ContentPartText
+            | ContentPartImage
+            | ContentPartAudio
+            | ContentPartVideo
+            | ContentPartPdf
+        ]
+    ) = Field(description="The contents of the system message.")
+    name: str | None = Field(
+        default=None,
+        description="An optional name for the participant. Provides the model information to differentiate between participants of the same role.",
+    )  # type: ignore
 
     @property
     def text(self) -> str:
@@ -205,30 +287,44 @@ class SystemMessage(Message):
         if isinstance(self.content, str):
             return self.content
         elif isinstance(self.content, list):
-            return '\n'.join([str(part) for part in self.content])
+            return "\n".join([str(part) for part in self.content])
         else:
-            return ''
+            return ""
 
     def __str__(self) -> str:
-        return f'SystemMessage(content={self.text})'
+        return f"SystemMessage(content={self.text})"
 
     def __repr__(self) -> str:
-        return f'SystemMessage(content={repr(self.text)})'
+        return f"SystemMessage(content={self.text!r})"
 
 
 class AssistantMessage(Message):
-    role: Literal['assistant'] = Field(default='assistant', description="The role of the messages author, in this case `assistant`.")  # type: ignore
-    content: Union[str, List[Union[
-        ContentPartText,
-        ContentPartImage,
-        ContentPartAudio,
-        ContentPartVideo,
-        ContentPartPdf,
-        ContentPartRefusal,
-    ]]] = Field(description="The contents of the assistant message.")
-    name: Optional[str] = Field(default=None, description="An optional name for the participant. Provides the model information to differentiate between participants of the same role.")  # type: ignore
-    refusal: Optional[str] = Field(default=None, description="The refusal message by the assistant.")  # type: ignore
-    tool_calls: List[ToolCall] = Field(default=[], description="The tool calls generated by the model, such as function calls.")  # type: ignore
+    role: Literal["assistant"] = Field(
+        default="assistant",
+        description="The role of the messages author, in this case `assistant`.",
+    )  # type: ignore
+    content: (
+        str
+        | list[
+            ContentPartText
+            | ContentPartImage
+            | ContentPartAudio
+            | ContentPartVideo
+            | ContentPartPdf
+            | ContentPartRefusal
+        ]
+    ) = Field(description="The contents of the assistant message.")
+    name: str | None = Field(
+        default=None,
+        description="An optional name for the participant. Provides the model information to differentiate between participants of the same role.",
+    )  # type: ignore
+    refusal: str | None = Field(
+        default=None, description="The refusal message by the assistant."
+    )  # type: ignore
+    tool_calls: list[ToolCall] = Field(
+        default=[],
+        description="The tool calls generated by the model, such as function calls.",
+    )  # type: ignore
 
     @property
     def text(self) -> str:
@@ -236,12 +332,12 @@ class AssistantMessage(Message):
         if isinstance(self.content, str):
             return self.content
         elif isinstance(self.content, list):
-            return '\n'.join([str(part) for part in self.content])
+            return "\n".join([str(part) for part in self.content])
         else:
-            return ''
+            return ""
 
     def __str__(self) -> str:
-        return f'AssistantMessage(content={self.text})'
+        return f"AssistantMessage(content={self.text})"
 
     def __repr__(self) -> str:
-        return f'AssistantMessage(content={repr(self.text)})'
+        return f"AssistantMessage(content={self.text!r})"

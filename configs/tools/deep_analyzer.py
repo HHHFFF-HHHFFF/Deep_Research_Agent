@@ -1,5 +1,5 @@
 deep_analyzer_tool = {
     "base_dir": "workdir/tool/deep_analyzer",
     "model_name": "openrouter/o3",
-    "require_grad": False
+    "require_grad": False,
 }

@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional, Type, Union
-
+from typing import Any
 
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field
@@ -19,71 +18,92 @@ from src.memory import EventType, memory_manager
 from src.message.types import HumanMessage, Message, SystemMessage
 from src.model import model_manager
 from src.prompt import prompt_manager
-from src.tool.server import tcp
+from src.session import SessionContext
 from src.skill.server import scp
+from src.tool.server import tcp
 from src.utils import (
     dedent,
     get_file_info,
 )
-from src.session import SessionContext
+
 
 class InputArgs(BaseModel):
     task: str = Field(description="The task to complete.")
-    files: Optional[List[str]] = Field(default=None, description="The files to attach to the task.")
+    files: list[str] | None = Field(
+        default=None, description="The files to attach to the task."
+    )
+
 
 class ACPErrorCode(Enum):
     """定义 `ACPErrorCode`，封装相关数据与行为。"""
+
     INVALID_REQUEST = -32600
     METHOD_NOT_FOUND = -32601
     INVALID_PARAMS = -32602
     INTERNAL_ERROR = -32603
     AGENT_NOT_FOUND = -32001
 
+
 class ACPError(BaseModel):
     """定义 `ACPError`，封装相关数据与行为。"""
+
     code: ACPErrorCode
     message: str
-    data: Optional[Dict[str, Any]] = None
+    data: dict[str, Any] | None = None
+
 
 class ACPRequest(BaseModel):
     """定义 `ACPRequest`，封装相关数据与行为。"""
-    id: Union[str, int] = Field(default_factory=lambda: str(uuid.uuid4()))
+
+    id: str | int = Field(default_factory=lambda: str(uuid.uuid4()))
     method: str
-    params: Optional[Dict[str, Any]] = None
+    params: dict[str, Any] | None = None
+
 
 class ACPResponse(BaseModel):
     """定义 `ACPResponse`，封装相关数据与行为。"""
-    id: Union[str, int]
-    result: Optional[Dict[str, Any]] = None
-    error: Optional[ACPError] = None
+
+    id: str | int
+    result: dict[str, Any] | None = None
+    error: ACPError | None = None
+
 
 class AgentConfig(BaseModel):
     """定义 `AgentConfig`，封装相关数据与行为。"""
+
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="allow")
 
     name: str = Field(description="The name of the agent")
     description: str = Field(description="The description of the agent")
     version: str = Field(default="1.0.0", description="Version of the agent")
-    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
-    require_grad: bool = Field(default=False, description="Whether the agent requires gradients")
+    metadata: dict[str, Any] | None = Field(default_factory=dict)
+    require_grad: bool = Field(
+        default=False, description="Whether the agent requires gradients"
+    )
 
-    cls: Optional[Any] = None
-    config: Optional[Dict[str, Any]] = Field(default_factory=dict,description="The initialization configuration of the agent",)
-    instance: Optional[Any] = None
+    cls: Any | None = None
+    config: dict[str, Any] | None = Field(
+        default_factory=dict,
+        description="The initialization configuration of the agent",
+    )
+    instance: Any | None = None
 
-    code: Optional[str] = Field(default=None, description="Source code for dynamically generated agent classes (used when cls cannot be imported from a module)")
+    code: str | None = Field(
+        default=None,
+        description="Source code for dynamically generated agent classes (used when cls cannot be imported from a module)",
+    )
 
-    function_calling: Optional[Dict[str, Any]] = Field(
+    function_calling: dict[str, Any] | None = Field(
         default=None, description="Default function calling representation"
     )
-    text: Optional[str] = Field(
+    text: str | None = Field(
         default=None, description="Default text representation of the agent"
     )
-    args_schema: Optional[Type[BaseModel]] = Field(
+    args_schema: type[BaseModel] | None = Field(
         default=None, description="Default args schema (BaseModel type)"
     )
 
-    def model_dump(self, **kwargs) -> Dict[str, Any]:
+    def model_dump(self, **kwargs) -> dict[str, Any]:
         """实现 `model_dump` 的业务逻辑。"""
 
         result = {
@@ -92,21 +112,21 @@ class AgentConfig(BaseModel):
             "metadata": self.metadata,
             "version": self.version,
             "require_grad": self.require_grad,
-
             "cls": dynamic_manager.get_class_string(self.cls) if self.cls else None,
             "config": self.config,
             "instance": None,
             "code": self.code,
-
             "function_calling": self.function_calling,
             "text": self.text,
-            "args_schema": dynamic_manager.serialize_args_schema(self.args_schema) if self.args_schema else None,
+            "args_schema": dynamic_manager.serialize_args_schema(self.args_schema)
+            if self.args_schema
+            else None,
         }
 
         return result
 
     @classmethod
-    def model_validate(cls, data: Dict[str, Any]) -> 'AgentConfig':
+    def model_validate(cls, data: dict[str, Any]) -> AgentConfig:
         """实现 `model_validate` 的业务逻辑。"""
         name = data.get("name")
         description = data.get("description")
@@ -121,12 +141,9 @@ class AgentConfig(BaseModel):
             if class_name:
                 try:
                     cls_ = dynamic_manager.load_class(
-                        code,
-                        class_name=class_name,
-                        base_class=Agent,
-                        context="agent"
+                        code, class_name=class_name, base_class=Agent, context="agent"
                     )
-                except Exception as e:
+                except Exception:
                     cls_ = None
             else:
                 cls_ = None
@@ -140,7 +157,8 @@ class AgentConfig(BaseModel):
         text = data.get("text")
         args_schema = dynamic_manager.deserialize_args_schema(data.get("args_schema"))
 
-        return cls(name=name,
+        return cls(
+            name=name,
             description=description,
             metadata=metadata,
             version=version,
@@ -150,7 +168,7 @@ class AgentConfig(BaseModel):
             instance=instance,
             function_calling=function_calling,
             text=text,
-            args_schema=args_schema
+            args_schema=args_schema,
         )
 
     def __str__(self) -> str:
@@ -164,7 +182,7 @@ class AgentConfig(BaseModel):
         return self.__str__()
 
 
-def format_actions(actions: List[BaseModel]) -> str:
+def format_actions(actions: list[BaseModel]) -> str:
     """格式化与 `format_actions` 对应的数据或状态。"""
     rows = []
     for action in actions:
@@ -173,12 +191,16 @@ def format_actions(actions: List[BaseModel]) -> str:
         else:
             args_str = str(action.args)
 
-        rows.append({
-            "Type": action.type if hasattr(action, "type") else "tool",
-            "Name": action.name,
-            "Args": args_str,
-            "Output": action.output if hasattr(action, "output") and action.output is not None else None,
-        })
+        rows.append(
+            {
+                "Type": action.type if hasattr(action, "type") else "tool",
+                "Name": action.name,
+                "Args": args_str,
+                "Output": action.output
+                if hasattr(action, "output") and action.output is not None
+                else None,
+            }
+        )
 
     df = pd.DataFrame(rows)
 
@@ -191,28 +213,28 @@ def format_actions(actions: List[BaseModel]) -> str:
 
 
 class ActionInputArgs(BaseModel):
-    type: str = Field(default="tool", description='The type of this action: "tool" or "skill".')
+    type: str = Field(
+        default="tool", description='The type of this action: "tool" or "skill".'
+    )
     name: str = Field(description="The name of the tool or skill.")
-    args: str = Field(description='The arguments as a JSON string. Must be a valid JSON object string. e.g., "{\"result\": \"D\", \"reasoning\": \"Step 1: ...\"}"')
+    args: str = Field(
+        description='The arguments as a JSON string. Must be a valid JSON object string. e.g., "{"result": "D", "reasoning": "Step 1: ..."}"'
+    )
 
 
 class ThinkOutput(BaseModel):
-    thinking: str = Field(
-        description="A structured <think>-style reasoning block."
-    )
+    thinking: str = Field(description="A structured <think>-style reasoning block.")
     evaluation_previous_goal: str = Field(
         description="One-sentence analysis of your last action."
     )
     memory: str = Field(description="1-3 sentences of specific memory.")
-    next_goal: str = Field(
-        description="State the next immediate goals and actions."
-    )
-    actions: List[ActionInputArgs] = Field(
+    next_goal: str = Field(description="State the next immediate goals and actions.")
+    actions: list[ActionInputArgs] = Field(
         description=(
-            'The list of actions (tool or skill calls) to execute in sequence. '
+            "The list of actions (tool or skill calls) to execute in sequence. "
             'Each action has a "type" ("tool" or "skill"), a "name", and "args" (JSON string). '
-            'e.g., [{"type": "tool", "name": "done", "args": "{\"result\": \"D\"}"}, '
-            '{"type": "skill", "name": "hello-world", "args": "{\"name\": \"Alice\"}"}]'
+            'e.g., [{"type": "tool", "name": "done", "args": "{"result": "D"}"}, '
+            '{"type": "skill", "name": "hello-world", "args": "{"name": "Alice"}"}]'
         )
     )
 
@@ -228,6 +250,7 @@ class ThinkOutput(BaseModel):
     def __repr__(self) -> str:
         return self.__str__()
 
+
 class Agent(BaseModel):
     """定义 `Agent`，封装相关数据与行为。"""
 
@@ -235,19 +258,21 @@ class Agent(BaseModel):
 
     name: str = Field(description="The name of the agent.")
     description: str = Field(description="The description of the agent.")
-    metadata: Dict[str, Any] = Field(description="The metadata of the agent.")
+    metadata: dict[str, Any] = Field(description="The metadata of the agent.")
     version: str = Field(default="1.0.0", description="Version of the agent")
-    require_grad: bool = Field(default=False, description="Whether the agent requires gradients")
+    require_grad: bool = Field(
+        default=False, description="Whether the agent requires gradients"
+    )
 
     def __init__(
         self,
         workdir: str,
-        name: Optional[str] = None,
-        description: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-        model_name: Optional[str] = None,
-        prompt_name: Optional[str] = None,
-        memory_name: Optional[str] = None,
+        name: str | None = None,
+        description: str | None = None,
+        metadata: dict[str, Any] | None = None,
+        model_name: str | None = None,
+        prompt_name: str | None = None,
+        memory_name: str | None = None,
         max_tools: int = 10,
         max_steps: int = 20,
         review_steps: int = 5,
@@ -290,7 +315,7 @@ class Agent(BaseModel):
     def __repr__(self) -> str:
         return self.__str__()
 
-    async def _extract_file_content(self, file: str) -> Dict[str, Any]:
+    async def _extract_file_content(self, file: str) -> dict[str, Any]:
         """实现 `_extract_file_content` 的业务逻辑。"""
 
         info = get_file_info(file)
@@ -328,7 +353,9 @@ class Agent(BaseModel):
 
         return info
 
-    async def _generate_enhanced_task(self, task: str, files: List[Dict[str, Any]]) -> str:
+    async def _generate_enhanced_task(
+        self, task: str, files: list[dict[str, Any]]
+    ) -> str:
         """实现 `_generate_enhanced_task` 的业务逻辑。"""
 
         attach_files_string = "\n".join(
@@ -341,23 +368,20 @@ class Agent(BaseModel):
             {task}
             - Attach files:
             {attach_files_string}
-        """)
+        """
+        )
         return enhanced_task
 
-    async def _get_agent_context(self,
-                                 task: str,
-                                 step_number: int = 0,
-                                 ctx: SessionContext = None,
-                                 **kwargs) -> Dict[str, Any]:
+    async def _get_agent_context(
+        self, task: str, step_number: int = 0, ctx: SessionContext = None, **kwargs
+    ) -> dict[str, Any]:
         """实现 `_get_agent_context` 的业务逻辑。"""
         task = f"<task>{task}</task>"
-
-        id = ctx.id if ctx else None
 
         step_info_description = (
             f"Step {step_number + 1} of {self.max_steps} max possible steps\n"
         )
-        time_str = datetime.now().isoformat()
+        time_str = datetime.now(timezone.utc).isoformat()
         step_info_description += f"Current date and time: {time_str}"
         step_info = dedent(f"""
             <step_info>
@@ -369,9 +393,7 @@ class Agent(BaseModel):
         memory = ""
         if self.use_memory and self.memory_name:
             state = await memory_manager.get_state(
-                name=self.memory_name,
-                n=self.review_steps,
-                ctx=ctx
+                name=self.memory_name, n=self.review_steps, ctx=ctx
             )
             events = state["events"]
             summaries = state["summaries"]
@@ -444,12 +466,10 @@ class Agent(BaseModel):
             "agent_context": agent_context,
         }
 
-    async def _get_environment_context(self,
-                                       ctx: SessionContext,
-                                       **kwargs) -> Dict[str, Any]:
+    async def _get_environment_context(
+        self, ctx: SessionContext, **kwargs
+    ) -> dict[str, Any]:
         """实现 `_get_environment_context` 的业务逻辑。"""
-
-        id = ctx.id
 
         environment_context = "<environment_context>"
         # 配置相关参数。
@@ -487,7 +507,7 @@ class Agent(BaseModel):
             "environment_context": environment_context,
         }
 
-    async def _get_tool_context(self, ctx: SessionContext, **kwargs) -> Dict[str, Any]:
+    async def _get_tool_context(self, ctx: SessionContext, **kwargs) -> dict[str, Any]:
         """实现 `_get_tool_context` 的业务逻辑。"""
         tool_context = "<tool_context>"
 
@@ -502,7 +522,7 @@ class Agent(BaseModel):
             "tool_context": tool_context,
         }
 
-    async def _get_skill_context(self, ctx: SessionContext, **kwargs) -> Dict[str, Any]:
+    async def _get_skill_context(self, ctx: SessionContext, **kwargs) -> dict[str, Any]:
         """实现 `_get_skill_context` 的业务逻辑。"""
         skill_content = await scp.get_context()
         if not skill_content:
@@ -513,15 +533,13 @@ class Agent(BaseModel):
             "skill_context": skill_context,
         }
 
-    async def _get_messages(self,
-                            task: str,
-                            ctx: SessionContext,
-                            **kwargs) -> List[Message]:
+    async def _get_messages(
+        self, task: str, ctx: SessionContext, **kwargs
+    ) -> list[Message]:
         """实现 `_get_messages` 的业务逻辑。"""
 
-
-        system_modules = dict(max_tools=self.max_tools,workdir=self.workdir)
-        agent_message_modules = dict(task=task)
+        system_modules = {"max_tools": self.max_tools, "workdir": self.workdir}
+        agent_message_modules = {"task": task}
 
         agent_message_modules.update(await self._get_agent_context(task, ctx=ctx))
         agent_message_modules.update(await self._get_environment_context(ctx=ctx))
@@ -536,41 +554,56 @@ class Agent(BaseModel):
 
         return messages
 
-    async def __call__(self,
-                       task: str,
-                       files: Optional[List[str]] = None,
-                       ctx: Optional[SessionContext] = None,
-                       **kwargs: Any,
-                       ) -> AgentResponse:
+    async def __call__(
+        self,
+        task: str,
+        files: list[str] | None = None,
+        ctx: SessionContext | None = None,
+        **kwargs: Any,
+    ) -> AgentResponse:
         """执行组件调用并返回结果。"""
-        raise NotImplementedError("__all__ method is not implemented by the child class")
+        raise NotImplementedError(
+            "__all__ method is not implemented by the child class"
+        )
 
 
 class AgentExtra(BaseModel):
     """定义 `AgentExtra`，封装相关数据与行为。"""
+
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="allow")
 
-    file_path: Optional[Union[str, List[str]]] = Field(default=None, description="The file path of the extra data")
-    data: Optional[Dict[str, Any]] = Field(default=None, description="The data of the extra data")
-    parsed_model: Optional[BaseModel] = Field(default=None, description="The parsed model of the extra data")
+    file_path: str | list[str] | None = Field(
+        default=None, description="The file path of the extra data"
+    )
+    data: dict[str, Any] | None = Field(
+        default=None, description="The data of the extra data"
+    )
+    parsed_model: BaseModel | None = Field(
+        default=None, description="The parsed model of the extra data"
+    )
+
 
 class AgentResponse(BaseModel):
     """定义 `AgentResponse`，封装相关数据与行为。"""
+
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="allow")
 
     success: bool = Field(description="Whether the agent has completed the task.")
     message: str = Field(description="The message of the agent.")
-    extra: Optional[AgentExtra] = Field(default=None, description="The extra data of the agent.")
+    extra: AgentExtra | None = Field(
+        default=None, description="The extra data of the agent."
+    )
+
 
 __all__ = [
-    "InputArgs",
-    "ACPErrorCode",
     "ACPError",
+    "ACPErrorCode",
     "ACPRequest",
     "ACPResponse",
-    "AgentConfig",
     "ActionInputArgs",
     "Agent",
+    "AgentConfig",
     "AgentResponse",
+    "InputArgs",
     "ThinkOutput",
 ]

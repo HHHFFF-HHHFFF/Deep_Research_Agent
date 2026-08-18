@@ -1,46 +1,63 @@
 """提供上下文管理相关实现。"""
-import os
+
 import asyncio
-from asyncio_atexit import register as async_atexit_register
-from typing import Any, Dict, List, Type, Optional, Union, Tuple, TYPE_CHECKING
-from datetime import datetime
-import inflection
 import json
+import os
+from datetime import datetime, timezone
+from typing import TYPE_CHECKING, Any
+
+import inflection
+from asyncio_atexit import register as async_atexit_register
 from pydantic import BaseModel, ConfigDict, Field
 
 if TYPE_CHECKING:
     from src.optimizer.types import Variable
 
-from src.logger import logger
+import builtins
+
 from src.config import config
+from src.dynamic import dynamic_manager
 from src.environment.faiss.service import FaissService
 from src.environment.faiss.types import FaissAddRequest
-from src.utils import (assemble_project_path,
-                       gather_with_concurrency,
-                       file_lock
-                       )
-from src.tool.types import Tool, ToolConfig, ToolResponse
-from src.session import SessionContext
-from src.version import version_manager
-from src.dynamic import dynamic_manager
+from src.logger import logger
 from src.registry import TOOL
+from src.session import SessionContext
+from src.tool.types import Tool, ToolConfig, ToolResponse
+from src.utils import (
+    assemble_project_path,
+    file_lock,
+    gather_with_concurrency,
+    read_json_file,
+    read_text_file,
+    write_json_file,
+    write_text_file,
+)
+from src.version import version_manager
+
 
 class ToolContextManager(BaseModel):
     """定义 `ToolContextManager`，封装相关数据与行为。"""
+
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="allow")
 
-    base_dir: str = Field(default=None, description="The base directory to use for the tools")
+    base_dir: str = Field(
+        default=None, description="The base directory to use for the tools"
+    )
     save_path: str = Field(default=None, description="The path to save the tools")
-    contract_path: str = Field(default=None, description="The path to save the tool contract")
+    contract_path: str = Field(
+        default=None, description="The path to save the tool contract"
+    )
 
-    def __init__(self,
-                 base_dir: Optional[str] = None,
-                 save_path: Optional[str] = None,
-                 contract_path: Optional[str] = None,
-                 model_name: str = "openrouter/gemini-3-flash-preview",
-                 embedding_model_name: str = "openrouter/text-embedding-3-large",
-                 default_timeout: Optional[float] = 1800.0,
-                 **kwargs):
+    def __init__(
+        self,
+        base_dir: str | None = None,
+        save_path: str | None = None,
+        contract_path: str | None = None,
+        model_name: str = "openrouter/gemini-3-flash-preview",
+        embedding_model_name: str = "openrouter/text-embedding-3-large",
+        default_timeout: float | None = 1800.0,
+        **kwargs,
+    ):
         """初始化实例。"""
         super().__init__(**kwargs)
 
@@ -61,9 +78,9 @@ class ToolContextManager(BaseModel):
             self.contract_path = os.path.join(self.base_dir, "contract.md")
         logger.info(f"| 📁 Tool context manager contract path: {self.contract_path}.")
 
-        self._tool_configs: Dict[str, ToolConfig] = {}  # 配置相关参数。
+        self._tool_configs: dict[str, ToolConfig] = {}  # 配置相关参数。
         # 配置相关参数。
-        self._tool_history_versions: Dict[str, Dict[str, ToolConfig]] = {}
+        self._tool_history_versions: dict[str, dict[str, ToolConfig]] = {}
 
         self.model_name = model_name
         self.embedding_model_name = embedding_model_name
@@ -73,7 +90,7 @@ class ToolContextManager(BaseModel):
         self._faiss_service = None
         self._variables_lock = asyncio.Lock()  # 更新相关状态。
 
-    async def initialize(self, tool_names: Optional[List[str]] = None):
+    async def initialize(self, tool_names: list[str] | None = None):
         """初始化组件及其依赖资源。"""
 
         # 注册相关组件。
@@ -89,37 +106,52 @@ class ToolContextManager(BaseModel):
                 "Tool": Tool,
                 "ToolResponse": ToolResponse,
             }
+
         dynamic_manager.register_context_provider("tool", tool_context_provider)
 
         # 初始化相关状态。
         self._faiss_service = FaissService(
-            base_dir=self.base_dir,
-            model_name=self.model_name
+            base_dir=self.base_dir, model_name=self.model_name
         )
 
         # 加载所需数据。
         tool_configs = {}
-        registry_tool_configs: Dict[str, ToolConfig] = await self._load_from_registry()
+        registry_tool_configs: dict[str, ToolConfig] = await self._load_from_registry()
         tool_configs.update(registry_tool_configs)
 
         # 加载所需数据。
-        code_tool_configs: Dict[str, ToolConfig] = await self._load_from_code()
+        code_tool_configs: dict[str, ToolConfig] = await self._load_from_code()
 
         # 配置相关参数。
         for tool_name, code_config in code_tool_configs.items():
             if tool_name in tool_configs:
                 registry_config = tool_configs[tool_name]
                 # 处理版本与历史记录。
-                if version_manager.compare_versions(code_config.version, registry_config.version) > 0:
-                    logger.info(f"| 🔄 Overriding tool {tool_name} from registry (v{registry_config.version}) with code version (v{code_config.version})")
+                if (
+                    version_manager.compare_versions(
+                        code_config.version, registry_config.version
+                    )
+                    > 0
+                ):
+                    logger.info(
+                        f"| 🔄 Overriding tool {tool_name} from registry (v{registry_config.version}) with code version (v{code_config.version})"
+                    )
                     tool_configs[tool_name] = code_config
                 else:
-                    logger.info(f"| 📌 Keeping tool {tool_name} from registry (v{registry_config.version}), code version (v{code_config.version}) is not greater")
+                    logger.info(
+                        f"| 📌 Keeping tool {tool_name} from registry (v{registry_config.version}), code version (v{code_config.version}) is not greater"
+                    )
                     # 配置相关参数。
-                    if version_manager.compare_versions(code_config.version, registry_config.version) == 0:
-                        # 配置相关参数。
-                        if tool_name in self._tool_history_versions:
-                            self._tool_history_versions[tool_name][registry_config.version] = registry_config
+                    if (
+                        version_manager.compare_versions(
+                            code_config.version, registry_config.version
+                        )
+                        == 0
+                        and tool_name in self._tool_history_versions
+                    ):
+                        self._tool_history_versions[tool_name][
+                            registry_config.version
+                        ] = registry_config
             else:
                 # 处理工具调用。
                 tool_configs[tool_name] = code_config
@@ -130,10 +162,10 @@ class ToolContextManager(BaseModel):
 
         # 创建所需对象。
         tool_names = list(tool_configs.keys())
-        tasks = [
-            self.build(tool_configs[name]) for name in tool_names
-        ]
-        results = await gather_with_concurrency(tasks, max_concurrency=10, return_exceptions=True)
+        tasks = [self.build(tool_configs[name]) for name in tool_names]
+        results = await gather_with_concurrency(
+            tasks, max_concurrency=10, return_exceptions=True
+        )
 
         for tool_name, result in zip(tool_names, results):
             if isinstance(result, Exception):
@@ -151,25 +183,29 @@ class ToolContextManager(BaseModel):
         async_atexit_register(self.cleanup)
         self._cleanup_registered = True
 
-        logger.info(f"| ✅ Tools initialization completed")
+        logger.info("| ✅ Tools initialization completed")
 
     async def _load_from_registry(self):
         """实现 `_load_from_registry` 的业务逻辑。"""
 
-        tool_configs: Dict[str, ToolConfig] = {}
+        tool_configs: dict[str, ToolConfig] = {}
 
-        async def register_tool_class(tool_cls: Type[Tool]):
+        async def register_tool_class(tool_cls: type[Tool]):
             """注册与 `register_tool_class` 对应的数据或状态。"""
             try:
                 # 配置相关参数。
                 tool_config_key = inflection.underscore(tool_cls.__name__)
                 tool_config_dict = config.get(tool_config_key, {})
-                tool_require_grad = tool_config_dict.get("require_grad", False) if tool_config_dict and "require_grad" in tool_config_dict else False
+                tool_require_grad = (
+                    tool_config_dict.get("require_grad", False)
+                    if tool_config_dict and "require_grad" in tool_config_dict
+                    else False
+                )
 
                 # 处理工具调用。
-                tool_name = tool_cls.model_fields['name'].default
-                tool_description = tool_cls.model_fields['description'].default
-                tool_metadata = tool_cls.model_fields['metadata'].default
+                tool_name = tool_cls.model_fields["name"].default
+                tool_description = tool_cls.model_fields["description"].default
+                tool_metadata = tool_cls.model_fields["metadata"].default
 
                 # 处理版本与历史记录。
                 tool_version = await version_manager.get_version("tool", tool_name)
@@ -178,9 +214,15 @@ class ToolContextManager(BaseModel):
                 tool_code = dynamic_manager.get_full_module_source(tool_cls)
 
                 tool_parameters = dynamic_manager.get_parameters(tool_cls)
-                tool_function_calling = dynamic_manager.build_function_calling(tool_name, tool_description, tool_parameters)
-                tool_text = dynamic_manager.build_text_representation(tool_name, tool_description, tool_parameters)
-                tool_args_schema = dynamic_manager.build_args_schema(tool_name, tool_parameters)
+                tool_function_calling = dynamic_manager.build_function_calling(
+                    tool_name, tool_description, tool_parameters
+                )
+                tool_text = dynamic_manager.build_text_representation(
+                    tool_name, tool_description, tool_parameters
+                )
+                tool_args_schema = dynamic_manager.build_args_schema(
+                    tool_name, tool_parameters
+                )
 
                 # 配置相关参数。
                 tool_config = ToolConfig(
@@ -212,7 +254,9 @@ class ToolContextManager(BaseModel):
                 logger.info(f"| 📝 Registered tool: {tool_name} ({tool_cls.__name__})")
 
             except Exception as e:
-                logger.error(f"| ❌ Failed to register tool class {tool_cls.__name__}: {e}")
+                logger.error(
+                    f"| ❌ Failed to register tool class {tool_cls.__name__}: {e}"
+                )
                 raise
 
         import src.tool  # noqa: F401
@@ -223,38 +267,44 @@ class ToolContextManager(BaseModel):
         logger.info(f"| 🔍 Discovering {len(tool_classes)} tools from TOOL registry")
 
         # 注册相关组件。
-        tasks = [
-            register_tool_class(tool_cls) for tool_cls in tool_classes
-        ]
-        results = await gather_with_concurrency(tasks, max_concurrency=10, return_exceptions=True)
+        tasks = [register_tool_class(tool_cls) for tool_cls in tool_classes]
+        results = await gather_with_concurrency(
+            tasks, max_concurrency=10, return_exceptions=True
+        )
         success_count = sum(1 for r in results if not isinstance(r, Exception))
 
-        logger.info(f"| ✅ Discovered and registered {success_count}/{len(tool_classes)} tools from TOOL registry")
+        logger.info(
+            f"| ✅ Discovered and registered {success_count}/{len(tool_classes)} tools from TOOL registry"
+        )
 
         return tool_configs
 
     async def _load_from_code(self):
         """实现 `_load_from_code` 的业务逻辑。"""
 
-        tool_configs: Dict[str, ToolConfig] = {}
+        tool_configs: dict[str, ToolConfig] = {}
 
         # 加载所需数据。
         if not os.path.exists(self.save_path):
-            logger.info(f"| 📂 Tool config file not found at {self.save_path}, skipping code-based loading")
+            logger.info(
+                f"| 📂 Tool config file not found at {self.save_path}, skipping code-based loading"
+            )
             return tool_configs
 
         # 配置相关参数。
         try:
-            with open(self.save_path, "r", encoding="utf-8") as f:
-                load_data = json.load(f)
+            load_data = await read_json_file(self.save_path)
         except json.JSONDecodeError as e:
-            logger.warning(f"| ⚠️ Failed to parse tool config JSON from {self.save_path}: {e}")
+            logger.warning(
+                f"| ⚠️ Failed to parse tool config JSON from {self.save_path}: {e}"
+            )
             return tool_configs
 
-        metadata = load_data.get("metadata", {})
         tools_data = load_data.get("tools", {})
 
-        async def register_tool_class(tool_name: str, tool_data: Dict[str, Any]) -> Optional[Tuple[str, Dict[str, ToolConfig], Optional[ToolConfig]]]:
+        async def register_tool_class(
+            tool_name: str, tool_data: dict[str, Any]
+        ) -> tuple[str, dict[str, ToolConfig], ToolConfig | None] | None:
             """注册与 `register_tool_class` 对应的数据或状态。"""
             try:
                 current_version = tool_data.get("current_version", "1.0.0")
@@ -264,10 +314,10 @@ class ToolContextManager(BaseModel):
                     logger.warning(f"| ⚠️ Tool {tool_name} has no versions")
                     return None
 
-                version_map: Dict[str, ToolConfig] = {}
-                current_tool_config: Optional[ToolConfig] = None
+                version_map: dict[str, ToolConfig] = {}
+                current_tool_config: ToolConfig | None = None
 
-                for _, version_data in versions.items():
+                for version_data in versions.values():
                     tool_config = ToolConfig.model_validate(version_data)
                     version = tool_config.version
                     version_map[version] = tool_config
@@ -277,14 +327,19 @@ class ToolContextManager(BaseModel):
 
                 return tool_name, version_map, current_tool_config
             except Exception as e:
-                logger.error(f"| ❌ Failed to load tool {tool_name} from code JSON: {e}")
+                logger.error(
+                    f"| ❌ Failed to load tool {tool_name} from code JSON: {e}"
+                )
                 return None
 
         # 加载所需数据。
         tasks = [
-            register_tool_class(tool_name, tool_data) for tool_name, tool_data in tools_data.items()
+            register_tool_class(tool_name, tool_data)
+            for tool_name, tool_data in tools_data.items()
         ]
-        results = await gather_with_concurrency(tasks, max_concurrency=10, return_exceptions=True)
+        results = await gather_with_concurrency(
+            tasks, max_concurrency=10, return_exceptions=True
+        )
 
         for result in results:
             if isinstance(result, Exception) or result is None:
@@ -299,12 +354,16 @@ class ToolContextManager(BaseModel):
                 tool_configs[tool_name] = current_tool_config
             else:
                 # 执行回退或重试逻辑。
-                logger.warning(f"| ⚠️ Tool {tool_name} current_version not found, using last available version")
+                logger.warning(
+                    f"| ⚠️ Tool {tool_name} current_version not found, using last available version"
+                )
                 tool_configs[tool_name] = list(version_map.values())[-1]
 
             # 注册相关组件。
             for tool_config in version_map.values():
-                await version_manager.register_version("tool", tool_name, tool_config.version)
+                await version_manager.register_version(
+                    "tool", tool_name, tool_config.version
+                )
 
         logger.info(f"| 📂 Loaded {len(tool_configs)} tools from {self.save_path}")
         return tool_configs
@@ -316,21 +375,24 @@ class ToolContextManager(BaseModel):
 
         try:
             # 创建所需对象。
-            tool_text = f"Tool: {tool_config.name}\nDescription: {tool_config.description}"
+            tool_text = (
+                f"Tool: {tool_config.name}\nDescription: {tool_config.description}"
+            )
 
             # 说明相关实现细节。
             request = FaissAddRequest(
                 texts=[tool_text],
-                metadatas=[{
-                    "name": tool_config.name,
-                    "description": tool_config.description
-                }]
+                metadatas=[
+                    {"name": tool_config.name, "description": tool_config.description}
+                ],
             )
 
             await self._faiss_service.add_documents(request)
 
         except Exception as e:
-            logger.warning(f"| ⚠️ Failed to add tool {tool_config.name} to FAISS index: {e}")
+            logger.warning(
+                f"| ⚠️ Failed to add tool {tool_config.name} to FAISS index: {e}"
+            )
 
     async def build(self, tool_config: ToolConfig) -> ToolConfig:
         """实现 `build` 的业务逻辑。"""
@@ -343,10 +405,16 @@ class ToolContextManager(BaseModel):
         try:
             # 加载所需数据。
             if tool_config.cls is None:
-                raise ValueError(f"Cannot create tool {tool_config.name}: no class provided. Class should be loaded during initialization.")
+                raise ValueError(
+                    f"Cannot create tool {tool_config.name}: no class provided. Class should be loaded during initialization."
+                )
 
             # 处理工具调用。
-            tool_instance = tool_config.cls(**tool_config.config) if tool_config.config else tool_config.cls()
+            tool_instance = (
+                tool_config.cls(**tool_config.config)
+                if tool_config.config
+                else tool_config.cls()
+            )
 
             # 初始化相关状态。
             if hasattr(tool_instance, "initialize"):
@@ -364,12 +432,14 @@ class ToolContextManager(BaseModel):
             logger.error(f"| ❌ Failed to create tool {tool_config.name}: {e}")
             raise
 
-    async def register(self,
-                       tool_cls: Type[Tool],
-                       tool_config_dict: Optional[Dict[str, Any]] = None,
-                       override: bool = False,
-                       version: Optional[str] = None,
-                       code: Optional[str] = None) -> ToolConfig:
+    async def register(
+        self,
+        tool_cls: type[Tool],
+        tool_config_dict: dict[str, Any] | None = None,
+        override: bool = False,
+        version: str | None = None,
+        code: str | None = None,
+    ) -> ToolConfig:
         """实现 `register` 的业务逻辑。"""
 
         try:
@@ -382,14 +452,22 @@ class ToolContextManager(BaseModel):
             try:
                 tool_instance = tool_cls(**tool_config_dict)
             except Exception as e:
-                logger.error(f"| ❌ Failed to create tool instance for {tool_cls.__name__}: {e}")
-                raise ValueError(f"Failed to instantiate tool {tool_cls.__name__} with provided config: {e}")
+                logger.error(
+                    f"| ❌ Failed to create tool instance for {tool_cls.__name__}: {e}"
+                )
+                raise ValueError(
+                    f"Failed to instantiate tool {tool_cls.__name__} with provided config: {e}"
+                )
 
             tool_name = tool_instance.name
             tool_description = tool_instance.description
             tool_metadata = tool_instance.metadata
             # 配置相关参数。
-            tool_require_grad = tool_config_dict.get("require_grad", tool_instance.require_grad) if tool_config_dict and "require_grad" in tool_config_dict else tool_instance.require_grad
+            tool_require_grad = (
+                tool_config_dict.get("require_grad", tool_instance.require_grad)
+                if tool_config_dict and "require_grad" in tool_config_dict
+                else tool_instance.require_grad
+            )
 
             # 处理版本与历史记录。
             if version is None:
@@ -398,15 +476,25 @@ class ToolContextManager(BaseModel):
                 tool_version = version
 
             # 处理工具调用。
-            tool_code = code if code is not None else dynamic_manager.get_source_code(tool_cls)
+            tool_code = (
+                code if code is not None else dynamic_manager.get_source_code(tool_cls)
+            )
             if not tool_code:
-                logger.warning(f"| ⚠️ Tool {tool_name} is dynamic but source code cannot be extracted (and no code was provided)")
+                logger.warning(
+                    f"| ⚠️ Tool {tool_name} is dynamic but source code cannot be extracted (and no code was provided)"
+                )
 
             # 处理输入参数。
             tool_parameters = dynamic_manager.get_parameters(tool_cls)
-            tool_function_calling = dynamic_manager.build_function_calling(tool_name, tool_description, tool_parameters)
-            tool_text = dynamic_manager.build_text_representation(tool_name, tool_description, tool_parameters)
-            tool_args_schema = dynamic_manager.build_args_schema(tool_name, tool_parameters)
+            tool_function_calling = dynamic_manager.build_function_calling(
+                tool_name, tool_description, tool_parameters
+            )
+            tool_text = dynamic_manager.build_text_representation(
+                tool_name, tool_description, tool_parameters
+            )
+            tool_args_schema = dynamic_manager.build_args_schema(
+                tool_name, tool_parameters
+            )
 
             # 配置相关参数。
             tool_config = ToolConfig(
@@ -433,7 +521,9 @@ class ToolContextManager(BaseModel):
             self._tool_history_versions[tool_name][tool_config.version] = tool_config
 
             # 注册相关组件。
-            await version_manager.register_version("tool", tool_name, tool_config.version)
+            await version_manager.register_version(
+                "tool", tool_name, tool_config.version
+            )
 
             # 说明相关实现细节。
             await self._store(tool_config)
@@ -443,13 +533,14 @@ class ToolContextManager(BaseModel):
             # 持久化相关数据。
             await self.save_contract()
 
-            logger.info(f"| 📝 Registered tool config: {tool_name}: {tool_config.version}")
+            logger.info(
+                f"| 📝 Registered tool config: {tool_name}: {tool_config.version}"
+            )
             return tool_config
 
         except Exception as e:
             logger.error(f"| ❌ Failed to register tool: {e}")
             raise
-
 
     async def get(self, tool_name: str) -> Tool:
         """实现 `get` 的业务逻辑。"""
@@ -458,20 +549,22 @@ class ToolContextManager(BaseModel):
             return None
         return tool_config.instance if tool_config.instance is not None else None
 
-    async def get_info(self, tool_name: str) -> Optional[ToolConfig]:
+    async def get_info(self, tool_name: str) -> ToolConfig | None:
         """获取与 `get_info` 对应的数据或状态。"""
         return self._tool_configs.get(tool_name)
 
-    async def list(self) -> List[str]:
+    async def list(self) -> list[str]:
         """实现 `list` 的业务逻辑。"""
-        return [name for name in self._tool_configs.keys()]
+        return [name for name in self._tool_configs]
 
-    async def update(self,
-                     tool_cls: Type[Tool],
-                     tool_config_dict: Optional[Dict[str, Any]] = None,
-                     new_version: Optional[str] = None,
-                     description: Optional[str] = None,
-                     code: Optional[str] = None) -> ToolConfig:
+    async def update(
+        self,
+        tool_cls: type[Tool],
+        tool_config_dict: dict[str, Any] | None = None,
+        new_version: str | None = None,
+        description: str | None = None,
+        code: str | None = None,
+    ) -> ToolConfig:
         """实现 `update` 的业务逻辑。"""
         try:
             if tool_config_dict is None:
@@ -483,25 +576,37 @@ class ToolContextManager(BaseModel):
             try:
                 tool_instance = tool_cls(**tool_config_dict)
             except Exception as e:
-                logger.error(f"| ❌ Failed to create tool instance for {tool_cls.__name__}: {e}")
-                raise ValueError(f"Failed to instantiate tool {tool_cls.__name__} with provided config: {e}")
+                logger.error(
+                    f"| ❌ Failed to create tool instance for {tool_cls.__name__}: {e}"
+                )
+                raise ValueError(
+                    f"Failed to instantiate tool {tool_cls.__name__} with provided config: {e}"
+                )
 
             tool_name = tool_instance.name
 
             # 校验输入与当前状态。
             original_config = self._tool_configs.get(tool_name)
             if original_config is None:
-                raise ValueError(f"Tool {tool_name} not found. Use register() to register a new tool.")
+                raise ValueError(
+                    f"Tool {tool_name} not found. Use register() to register a new tool."
+                )
 
             tool_description = tool_instance.description
             tool_metadata = tool_instance.metadata
             # 配置相关参数。
-            tool_require_grad = tool_config_dict.get("require_grad", tool_instance.require_grad) if tool_config_dict and "require_grad" in tool_config_dict else tool_instance.require_grad
+            tool_require_grad = (
+                tool_config_dict.get("require_grad", tool_instance.require_grad)
+                if tool_config_dict and "require_grad" in tool_config_dict
+                else tool_instance.require_grad
+            )
 
             # 处理版本与历史记录。
             if new_version is None:
                 # 处理版本与历史记录。
-                new_version = await version_manager.generate_next_version("tool", tool_name, "patch")
+                new_version = await version_manager.generate_next_version(
+                    "tool", tool_name, "patch"
+                )
 
             # 创建所需对象。
             if code is not None:
@@ -509,13 +614,21 @@ class ToolContextManager(BaseModel):
             else:
                 tool_code = dynamic_manager.get_source_code(tool_cls)
                 if not tool_code:
-                    logger.warning(f"| ⚠️ Tool {tool_name} is dynamic but source code cannot be extracted")
+                    logger.warning(
+                        f"| ⚠️ Tool {tool_name} is dynamic but source code cannot be extracted"
+                    )
 
             # 创建所需对象。
             tool_parameters = dynamic_manager.get_parameters(tool_cls)
-            tool_function_calling = dynamic_manager.build_function_calling(tool_name, tool_description, tool_parameters)
-            tool_text = dynamic_manager.build_text_representation(tool_name, tool_description, tool_parameters)
-            tool_args_schema = dynamic_manager.build_args_schema(tool_name, tool_parameters)
+            tool_function_calling = dynamic_manager.build_function_calling(
+                tool_name, tool_description, tool_parameters
+            )
+            tool_text = dynamic_manager.build_text_representation(
+                tool_name, tool_description, tool_parameters
+            )
+            tool_args_schema = dynamic_manager.build_args_schema(
+                tool_name, tool_parameters
+            )
 
             # 配置相关参数。
             updated_config = ToolConfig(
@@ -539,14 +652,16 @@ class ToolContextManager(BaseModel):
             # 处理版本与历史记录。
             if tool_name not in self._tool_history_versions:
                 self._tool_history_versions[tool_name] = {}
-            self._tool_history_versions[tool_name][updated_config.version] = updated_config
+            self._tool_history_versions[tool_name][updated_config.version] = (
+                updated_config
+            )
 
             # 注册相关组件。
             await version_manager.register_version(
                 "tool",
                 tool_name,
                 new_version,
-                description=description or f"Updated from {original_config.version}"
+                description=description or f"Updated from {original_config.version}",
             )
 
             # 更新相关状态。
@@ -557,18 +672,22 @@ class ToolContextManager(BaseModel):
             # 持久化相关数据。
             await self.save_contract()
 
-            logger.info(f"| 🔄 Updated tool {tool_name} from v{original_config.version} to v{new_version}")
+            logger.info(
+                f"| 🔄 Updated tool {tool_name} from v{original_config.version} to v{new_version}"
+            )
             return updated_config
 
         except Exception as e:
             logger.error(f"| ❌ Failed to update tool: {e}")
             raise
 
-    async def copy(self,
-                  tool_name: str,
-                  new_name: Optional[str] = None,
-                  new_version: Optional[str] = None,
-                  new_config: Optional[Dict[str, Any]] = None) -> ToolConfig:
+    async def copy(
+        self,
+        tool_name: str,
+        new_name: str | None = None,
+        new_version: str | None = None,
+        new_config: dict[str, Any] | None = None,
+    ) -> ToolConfig:
         """实现 `copy` 的业务逻辑。"""
         try:
             original_config = self._tool_configs.get(tool_name)
@@ -583,7 +702,9 @@ class ToolContextManager(BaseModel):
                 new_name = tool_name
 
             # 配置相关参数。
-            tool_config_dict = original_config.config.copy() if original_config.config else {}
+            tool_config_dict = (
+                original_config.config.copy() if original_config.config else {}
+            )
             if new_config:
                 # 配置相关参数。
                 tool_config_dict.update(new_config)
@@ -592,8 +713,12 @@ class ToolContextManager(BaseModel):
             try:
                 tool_instance = original_config.cls(**tool_config_dict)
             except Exception as e:
-                logger.error(f"| ❌ Failed to create tool instance for {original_config.cls.__name__}: {e}")
-                raise ValueError(f"Failed to instantiate tool {original_config.cls.__name__} with provided config: {e}")
+                logger.error(
+                    f"| ❌ Failed to create tool instance for {original_config.cls.__name__}: {e}"
+                )
+                raise ValueError(
+                    f"Failed to instantiate tool {original_config.cls.__name__} with provided config: {e}"
+                )
 
             # 说明相关实现细节。
             if new_name != tool_name:
@@ -601,13 +726,19 @@ class ToolContextManager(BaseModel):
 
             tool_description = tool_instance.description
             tool_metadata = tool_instance.metadata
-            tool_require_grad = tool_config_dict.get("require_grad", tool_instance.require_grad) if tool_config_dict and "require_grad" in tool_config_dict else tool_instance.require_grad
+            tool_require_grad = (
+                tool_config_dict.get("require_grad", tool_instance.require_grad)
+                if tool_config_dict and "require_grad" in tool_config_dict
+                else tool_instance.require_grad
+            )
 
             # 处理版本与历史记录。
             if new_version is None:
                 if new_name == tool_name:
                     # 处理版本与历史记录。
-                    new_version = await version_manager.generate_next_version("tool", new_name, "patch")
+                    new_version = await version_manager.generate_next_version(
+                        "tool", new_name, "patch"
+                    )
                 else:
                     # 处理版本与历史记录。
                     new_version = await version_manager.get_version("tool", new_name)
@@ -615,13 +746,21 @@ class ToolContextManager(BaseModel):
             # 处理工具调用。
             tool_code = dynamic_manager.get_source_code(original_config.cls)
             if not tool_code:
-                logger.warning(f"| ⚠️ Tool {new_name} is dynamic but source code cannot be extracted")
+                logger.warning(
+                    f"| ⚠️ Tool {new_name} is dynamic but source code cannot be extracted"
+                )
 
             # 创建所需对象。
             tool_parameters = dynamic_manager.get_parameters(original_config.cls)
-            tool_function_calling = dynamic_manager.build_function_calling(new_name, tool_description, tool_parameters)
-            tool_text = dynamic_manager.build_text_representation(new_name, tool_description, tool_parameters)
-            tool_args_schema = dynamic_manager.build_args_schema(new_name, tool_parameters)
+            tool_function_calling = dynamic_manager.build_function_calling(
+                new_name, tool_description, tool_parameters
+            )
+            tool_text = dynamic_manager.build_text_representation(
+                new_name, tool_description, tool_parameters
+            )
+            tool_args_schema = dynamic_manager.build_args_schema(
+                new_name, tool_parameters
+            )
 
             # 配置相关参数。
             new_config = ToolConfig(
@@ -652,7 +791,7 @@ class ToolContextManager(BaseModel):
                 "tool",
                 new_name,
                 new_version,
-                description=f"Copied from {tool_name}@{original_config.version}"
+                description=f"Copied from {tool_name}@{original_config.version}",
             )
 
             # 注册相关组件。
@@ -663,7 +802,9 @@ class ToolContextManager(BaseModel):
             # 持久化相关数据。
             await self.save_contract()
 
-            logger.info(f"| 📋 Copied tool {tool_name}@{original_config.version} to {new_name}@{new_version}")
+            logger.info(
+                f"| 📋 Copied tool {tool_name}@{original_config.version} to {new_name}@{new_version}"
+            )
             return new_config
 
         except Exception as e:
@@ -689,7 +830,7 @@ class ToolContextManager(BaseModel):
         logger.info(f"| 🗑️ Unregistered tool {tool_name}@{tool_config.version}")
         return True
 
-    async def save_to_json(self, file_path: Optional[str] = None) -> str:
+    async def save_to_json(self, file_path: str | None = None) -> str:
         """保存与 `save_to_json` 对应的数据或状态。"""
         file_path = file_path if file_path is not None else self.save_path
 
@@ -702,17 +843,22 @@ class ToolContextManager(BaseModel):
             # 持久化相关数据。
             save_data = {
                 "metadata": {
-                    "saved_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    "saved_at": datetime.now(timezone.utc).strftime(
+                        "%Y-%m-%d %H:%M:%S"
+                    ),
                     "num_tools": len(self._tool_configs),
-                    "num_versions": sum(len(versions) for versions in self._tool_history_versions.values()),
+                    "num_versions": sum(
+                        len(versions)
+                        for versions in self._tool_history_versions.values()
+                    ),
                 },
-                "tools": {}
+                "tools": {},
             }
 
             for tool_name, version_map in self._tool_history_versions.items():
                 try:
-                    versions_data: Dict[str, Dict[str, Any]] = {}
-                    for _, tool_config in version_map.items():
+                    versions_data: dict[str, dict[str, Any]] = {}
+                    for tool_config in version_map.values():
                         config_dict = tool_config.model_dump()
                         versions_data[tool_config.version] = config_dict
 
@@ -728,29 +874,36 @@ class ToolContextManager(BaseModel):
                     if current_version is None and version_map:
                         # 处理版本与历史记录。
                         latest_version_str = None
-                        for version_str in version_map.keys():
-                            if latest_version_str is None:
-                                latest_version_str = version_str
-                            elif version_manager.compare_versions(version_str, latest_version_str) > 0:
+                        for version_str in version_map:
+                            if (
+                                latest_version_str is None
+                                or version_manager.compare_versions(
+                                    version_str, latest_version_str
+                                )
+                                > 0
+                            ):
                                 latest_version_str = version_str
                         current_version = latest_version_str
 
                     save_data["tools"][tool_name] = {
                         "versions": versions_data,
-                        "current_version": current_version
+                        "current_version": current_version,
                     }
                 except Exception as e:
                     logger.warning(f"| ⚠️ Failed to serialize tool {tool_name}: {e}")
                     continue
 
             # 持久化相关数据。
-            with open(file_path, "w", encoding="utf-8") as f:
-                json.dump(save_data, f, indent=4, ensure_ascii=False)
+            await write_json_file(file_path, save_data)
 
-            logger.info(f"| 💾 Saved {len(self._tool_configs)} tools with version history to {file_path}")
+            logger.info(
+                f"| 💾 Saved {len(self._tool_configs)} tools with version history to {file_path}"
+            )
             return str(file_path)
 
-    async def load_from_json(self, file_path: Optional[str] = None, auto_initialize: bool = True) -> bool:
+    async def load_from_json(
+        self, file_path: str | None = None, auto_initialize: bool = True
+    ) -> bool:
         """加载与 `load_from_json` 对应的数据或状态。"""
 
         file_path = file_path if file_path is not None else self.save_path
@@ -761,8 +914,7 @@ class ToolContextManager(BaseModel):
                 return False
 
             try:
-                with open(file_path, "r", encoding="utf-8") as f:
-                    load_data = json.load(f)
+                load_data = await read_json_file(file_path)
 
                 tools_data = load_data.get("tools", {})
                 loaded_count = 0
@@ -772,7 +924,9 @@ class ToolContextManager(BaseModel):
                         # 配置相关参数。
                         versions_data = tool_data.get("versions")
                         if not isinstance(versions_data, dict):
-                            logger.warning(f"| ⚠️ Tool {tool_name} has invalid format for 'versions' (expected dict), skipping")
+                            logger.warning(
+                                f"| ⚠️ Tool {tool_name} has invalid format for 'versions' (expected dict), skipping"
+                            )
                             continue
 
                         current_version_str = tool_data.get("current_version")
@@ -791,16 +945,27 @@ class ToolContextManager(BaseModel):
                                 tool_config = ToolConfig.model_validate(config_dict)
                                 version_configs.append(tool_config)
                             except Exception as e:
-                                logger.warning(f"| ⚠️ Failed to load tool config for {tool_name}@{version_str}: {e}")
+                                logger.warning(
+                                    f"| ⚠️ Failed to load tool config for {tool_name}@{version_str}: {e}"
+                                )
                                 continue
 
                             # 处理版本与历史记录。
-                            if latest_config is None or (
-                                current_version_str and tool_config.version == current_version_str
-                            ) or (
-                                not current_version_str and (
-                                    latest_version is None or
-                                    version_manager.compare_versions(tool_config.version, latest_version) > 0
+                            if (
+                                latest_config is None
+                                or (
+                                    current_version_str
+                                    and tool_config.version == current_version_str
+                                )
+                                or (
+                                    not current_version_str
+                                    and (
+                                        latest_version is None
+                                        or version_manager.compare_versions(
+                                            tool_config.version, latest_version
+                                        )
+                                        > 0
+                                    )
                                 )
                             ):
                                 latest_config = tool_config
@@ -817,7 +982,9 @@ class ToolContextManager(BaseModel):
 
                             # 注册相关组件。
                             for tool_config in version_configs:
-                                await version_manager.register_version("tool", tool_name, tool_config.version)
+                                await version_manager.register_version(
+                                    "tool", tool_name, tool_config.version
+                                )
 
                             # 持久化相关数据。
                             if auto_initialize and latest_config.cls is not None:
@@ -828,14 +995,18 @@ class ToolContextManager(BaseModel):
                         logger.error(f"| ❌ Failed to load tool {tool_name}: {e}")
                         continue
 
-                logger.info(f"| 📂 Loaded {loaded_count} tools with version history from {file_path}")
+                logger.info(
+                    f"| 📂 Loaded {loaded_count} tools with version history from {file_path}"
+                )
                 return True
 
             except Exception as e:
                 logger.error(f"| ❌ Failed to load tools from {file_path}: {e}")
                 return False
 
-    async def restore(self, tool_name: str, version: str, auto_initialize: bool = True) -> Optional[ToolConfig]:
+    async def restore(
+        self, tool_name: str, version: str, auto_initialize: bool = True
+    ) -> ToolConfig | None:
         """实现 `restore` 的业务逻辑。"""
         # 处理版本与历史记录。
         version_config = None
@@ -873,7 +1044,7 @@ class ToolContextManager(BaseModel):
         logger.info(f"| 🔄 Restored tool {tool_name} to version {version}")
         return restored_config
 
-    async def save_contract(self, tool_names: Optional[List[str]] = None):
+    async def save_contract(self, tool_names: builtins.list[str] | None = None):
         """保存与 `save_contract` 对应的数据或状态。"""
         contract = []
         if tool_names is not None:
@@ -887,17 +1058,16 @@ class ToolContextManager(BaseModel):
                 text = tool_info.text
                 contract.append(f"{index + 1:04d}\n{text}\n")
         contract_text = "---\n".join(contract)
-        with open(self.contract_path, "w", encoding="utf-8") as f:
-            f.write(contract_text)
-        logger.info(f"| 📝 Saved {len(contract)} tools contract to {self.contract_path}")
+        await write_text_file(self.contract_path, contract_text)
+        logger.info(
+            f"| 📝 Saved {len(contract)} tools contract to {self.contract_path}"
+        )
 
     async def load_contract(self) -> str:
         """加载与 `load_contract` 对应的数据或状态。"""
-        with open(self.contract_path, "r", encoding="utf-8") as f:
-            contract_text = f.read()
-        return contract_text
+        return await read_text_file(self.contract_path)
 
-    async def retrieve(self, query: str, k: int = 4) -> List[Dict[str, Any]]:
+    async def retrieve(self, query: str, k: int = 4) -> builtins.list[dict[str, Any]]:
         """实现 `retrieve` 的业务逻辑。"""
         if self._faiss_service is None:
             logger.warning("| ⚠️ FAISS service not initialized, cannot retrieve tools")
@@ -909,7 +1079,7 @@ class ToolContextManager(BaseModel):
             request = FaissSearchRequest(
                 query=query,
                 k=k,
-                fetch_k=k * 5  # 检索所需信息。
+                fetch_k=k * 5,  # 检索所需信息。
             )
 
             result = await self._faiss_service.search_similar(request)
@@ -934,13 +1104,17 @@ class ToolContextManager(BaseModel):
                     if tool_name and tool_name in self._tool_configs:
                         tool_config = self._tool_configs[tool_name]
 
-                    documents.append({
-                        "name": tool_name,
-                        "description": metadata.get("description", ""),
-                        "score": float(score),
-                        "content": doc.get("page_content", "") if isinstance(doc, dict) else str(doc),
-                        "config": tool_config.model_dump() if tool_config else None
-                    })
+                    documents.append(
+                        {
+                            "name": tool_name,
+                            "description": metadata.get("description", ""),
+                            "score": float(score),
+                            "content": doc.get("page_content", "")
+                            if isinstance(doc, dict)
+                            else str(doc),
+                            "config": tool_config.model_dump() if tool_config else None,
+                        }
+                    )
 
             return documents
 
@@ -963,12 +1137,14 @@ class ToolContextManager(BaseModel):
         except Exception as e:
             logger.error(f"| ❌ Error during tool context manager cleanup: {e}")
 
-    async def get_variables(self, tool_name: Optional[str] = None) -> Dict[str, 'Variable']:
+    async def get_variables(
+        self, tool_name: str | None = None
+    ) -> dict[str, "Variable"]:
         """获取与 `get_variables` 对应的数据或状态。"""
         # 说明相关实现细节。
         from src.optimizer.types import Variable
 
-        variables: Dict[str, Variable] = {}
+        variables: dict[str, Variable] = {}
 
         if tool_name is not None:
             # 处理工具调用。
@@ -993,13 +1169,15 @@ class ToolContextManager(BaseModel):
                 description=tool_config.description or f"Code for tool {name}",
                 require_grad=tool_config.require_grad,
                 template=None,
-                variables=tool_code  # 说明相关实现细节。
+                variables=tool_code,  # 说明相关实现细节。
             )
             variables[name] = variable
 
         return variables
 
-    async def get_trainable_variables(self, tool_name: Optional[str] = None) -> Dict[str, 'Variable']:
+    async def get_trainable_variables(
+        self, tool_name: str | None = None
+    ) -> dict[str, "Variable"]:
         """获取与 `get_trainable_variables` 对应的数据或状态。"""
         async with self._variables_lock:
             # 说明相关实现细节。
@@ -1007,39 +1185,47 @@ class ToolContextManager(BaseModel):
 
             # 说明相关实现细节。
             trainable_variables = {
-                name: variable for name, variable in all_variables.items()
+                name: variable
+                for name, variable in all_variables.items()
                 if variable.require_grad is True
             }
 
             return trainable_variables
 
-    async def set_variables(self, tool_name: str, variable_updates: Dict[str, Any], new_version: Optional[str] = None, description: Optional[str] = None) -> ToolConfig:
+    async def set_variables(
+        self,
+        tool_name: str,
+        variable_updates: dict[str, Any],
+        new_version: str | None = None,
+        description: str | None = None,
+    ) -> ToolConfig:
         """设置与 `set_variables` 对应的数据或状态。"""
         async with self._variables_lock:
             original_config = self._tool_configs.get(tool_name)
             if original_config is None:
-                raise ValueError(f"Tool {tool_name} not found. Use register() to register a new tool.")
+                raise ValueError(
+                    f"Tool {tool_name} not found. Use register() to register a new tool."
+                )
 
             # 更新相关状态。
             # 说明相关实现细节。
             if "variables" not in variable_updates:
-                raise ValueError(f"variable_updates must contain 'variables' field with tool code, got: {list(variable_updates.keys())}")
+                raise ValueError(
+                    f"variable_updates must contain 'variables' field with tool code, got: {list(variable_updates.keys())}"
+                )
 
             new_code = variable_updates["variables"]
             if not isinstance(new_code, str):
-                raise ValueError(f"Tool code must be a string, got {type(new_code)}")
+                raise TypeError(f"Tool code must be a string, got {type(new_code)}")
 
             # 加载所需数据。
             class_name = dynamic_manager.extract_class_name_from_code(new_code)
             if not class_name:
-                raise ValueError(f"Cannot extract class name from code")
+                raise ValueError("Cannot extract class name from code")
 
             try:
                 tool_cls = dynamic_manager.load_class(
-                    new_code,
-                    class_name=class_name,
-                    base_class=Tool,
-                    context="tool"
+                    new_code, class_name=class_name, base_class=Tool, context="tool"
                 )
             except Exception as e:
                 logger.error(f"| ❌ Failed to load tool class from code: {e}")
@@ -1053,16 +1239,17 @@ class ToolContextManager(BaseModel):
                 tool_config_dict=original_config.config,
                 new_version=new_version,
                 description=update_description,
-                code=new_code  # 创建所需对象。
+                code=new_code,  # 创建所需对象。
             )
 
-    async def __call__(self,
-                       name: str,
-                       input: Dict[str, Any],
-                       timeout: Optional[float] = None,
-                       ctx: SessionContext = None,
-                       **kwargs
-                       ) -> ToolResponse:
+    async def __call__(
+        self,
+        name: str,
+        input: dict[str, Any],
+        timeout: float | None = None,
+        ctx: SessionContext = None,
+        **kwargs,
+    ) -> ToolResponse:
         """执行组件调用并返回结果。"""
 
         if ctx is None:
@@ -1083,7 +1270,7 @@ class ToolContextManager(BaseModel):
         effective_timeout = timeout if timeout is not None else self.default_timeout
 
         # 处理工具调用。
-        tool_kwargs = dict(ctx=ctx)
+        tool_kwargs = {"ctx": ctx}
 
         # 处理工具调用。
         if effective_timeout is None:
@@ -1091,12 +1278,12 @@ class ToolContextManager(BaseModel):
 
         # 执行异步任务。
         try:
-            return await asyncio.wait_for(tool_instance(**input, **tool_kwargs), timeout=effective_timeout)
-        except asyncio.TimeoutError:
-            error_msg = f"Tool '{name}' execution timed out after {effective_timeout} seconds"
-            logger.error(f"| ⏱️ {error_msg}")
-            return ToolResponse(
-                success=False,
-                message=error_msg,
-                extra=None
+            return await asyncio.wait_for(
+                tool_instance(**input, **tool_kwargs), timeout=effective_timeout
             )
+        except asyncio.TimeoutError:
+            error_msg = (
+                f"Tool '{name}' execution timed out after {effective_timeout} seconds"
+            )
+            logger.error(f"| ⏱️ {error_msg}")
+            return ToolResponse(success=False, message=error_msg, extra=None)

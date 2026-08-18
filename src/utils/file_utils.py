@@ -1,9 +1,10 @@
 import asyncio
 import os
-from typing import Dict, Any, Union
-from datetime import datetime
+from datetime import datetime, timezone
+from typing import Any
 
 from src.utils.singleton import Singleton
+
 
 def format_size(size_bytes: int) -> str:
     """格式化与 `format_size` 对应的数据或状态。"""
@@ -18,7 +19,8 @@ def format_size(size_bytes: int) -> str:
 
     return f"{size_bytes:.1f} {size_names[i]}"
 
-def get_file_info(file_path: str) -> Dict[str, Any]:
+
+def get_file_info(file_path: str) -> dict[str, Any]:
     """获取与 `get_file_info` 对应的数据或状态。"""
     abs_path = os.path.abspath(file_path)
 
@@ -27,9 +29,15 @@ def get_file_info(file_path: str) -> Dict[str, Any]:
 
     info["path"] = abs_path
     info["size"] = format_size(file_stats.st_size)
-    info["created"] = datetime.fromtimestamp(file_stats.st_ctime).strftime("%Y-%m-%d %H:%M:%S")
-    info["modified"] = datetime.fromtimestamp(file_stats.st_mtime).strftime("%Y-%m-%d %H:%M:%S")
-    info["accessed"] = datetime.fromtimestamp(file_stats.st_atime).strftime("%Y-%m-%d %H:%M:%S")
+    info["created"] = datetime.fromtimestamp(
+        file_stats.st_ctime, timezone.utc
+    ).strftime("%Y-%m-%d %H:%M:%S")
+    info["modified"] = datetime.fromtimestamp(
+        file_stats.st_mtime, timezone.utc
+    ).strftime("%Y-%m-%d %H:%M:%S")
+    info["accessed"] = datetime.fromtimestamp(
+        file_stats.st_atime, timezone.utc
+    ).strftime("%Y-%m-%d %H:%M:%S")
     info["permissions"] = oct(file_stats.st_mode)[-3:]
     info["is_directory"] = os.path.isdir(abs_path)
     info["is_file"] = os.path.isfile(abs_path)
@@ -37,11 +45,12 @@ def get_file_info(file_path: str) -> Dict[str, Any]:
 
     return info
 
+
 class FileLock(metaclass=Singleton):
     def __init__(self):
         self._locks = {}
 
-    def get_lock(self, key: Union[str]) -> asyncio.Lock:
+    def get_lock(self, key: str) -> asyncio.Lock:
         # 转换并规范化数据。
         key_str = str(key) if not isinstance(key, str) else key
         if key_str not in self._locks:
@@ -62,5 +71,6 @@ class _FileLockContext:
 
     async def __aexit__(self, exc_type, exc, tb):
         self._lock.release()
+
 
 file_lock = FileLock()

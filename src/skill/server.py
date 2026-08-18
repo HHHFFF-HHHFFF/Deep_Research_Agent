@@ -1,20 +1,22 @@
 """提供服务入口相关实现。"""
 
+import builtins
 import os
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from src.logger import logger
 from src.config import config
+from src.logger import logger
+from src.session import SessionContext
 from src.skill.context import SkillContextManager
 from src.skill.types import SkillConfig, SkillResponse
-from src.session import SessionContext
 from src.utils import assemble_project_path
 
 
 class SCPServer(BaseModel):
     """定义 `SCPServer`，封装相关数据与行为。"""
+
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="allow")
 
     base_dir: str = Field(default=None, description="Base directory for skill data")
@@ -23,13 +25,13 @@ class SCPServer(BaseModel):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.skill_context_manager: Optional[SkillContextManager] = None
+        self.skill_context_manager: SkillContextManager | None = None
 
     # ------------------------------------------------------------------
     # 说明相关实现细节。
     # ------------------------------------------------------------------
 
-    async def initialize(self, skill_names: Optional[List[str]] = None):
+    async def initialize(self, skill_names: list[str] | None = None):
         """初始化组件及其依赖资源。"""
         self.base_dir = assemble_project_path(os.path.join(config.workdir, "skill"))
         os.makedirs(self.base_dir, exist_ok=True)
@@ -62,7 +64,7 @@ class SCPServer(BaseModel):
         self,
         skill_dir: str,
         override: bool = False,
-        version: Optional[str] = None,
+        version: str | None = None,
     ) -> SkillConfig:
         """实现 `register` 的业务逻辑。"""
         return await self.skill_context_manager.register(
@@ -74,11 +76,11 @@ class SCPServer(BaseModel):
     async def update(
         self,
         name: str,
-        skill_dir: Optional[str] = None,
-        new_version: Optional[str] = None,
-        description: Optional[str] = None,
-        content: Optional[str] = None,
-        metadata: Optional[Dict[str, Any]] = None,
+        skill_dir: str | None = None,
+        new_version: str | None = None,
+        description: str | None = None,
+        content: str | None = None,
+        metadata: dict[str, Any] | None = None,
     ) -> SkillConfig:
         """实现 `update` 的业务逻辑。"""
         return await self.skill_context_manager.update(
@@ -97,9 +99,9 @@ class SCPServer(BaseModel):
     async def copy(
         self,
         name: str,
-        new_name: Optional[str] = None,
-        new_version: Optional[str] = None,
-        new_skill_dir: Optional[str] = None,
+        new_name: str | None = None,
+        new_version: str | None = None,
+        new_skill_dir: str | None = None,
     ) -> SkillConfig:
         """实现 `copy` 的业务逻辑。"""
         return await self.skill_context_manager.copy(
@@ -109,7 +111,7 @@ class SCPServer(BaseModel):
             new_skill_dir=new_skill_dir,
         )
 
-    async def restore(self, name: str, version: str) -> Optional[SkillConfig]:
+    async def restore(self, name: str, version: str) -> SkillConfig | None:
         """实现 `restore` 的业务逻辑。"""
         return await self.skill_context_manager.restore(name, version)
 
@@ -117,15 +119,15 @@ class SCPServer(BaseModel):
     # 检索所需信息。
     # ------------------------------------------------------------------
 
-    async def get(self, skill_name: str) -> Optional[SkillConfig]:
+    async def get(self, skill_name: str) -> SkillConfig | None:
         """实现 `get` 的业务逻辑。"""
         return await self.skill_context_manager.get(skill_name)
 
-    async def get_info(self, skill_name: str) -> Optional[SkillConfig]:
+    async def get_info(self, skill_name: str) -> SkillConfig | None:
         """获取与 `get_info` 对应的数据或状态。"""
         return await self.skill_context_manager.get_info(skill_name)
 
-    async def list(self) -> List[str]:
+    async def list(self) -> list[str]:
         """实现 `list` 的业务逻辑。"""
         return await self.skill_context_manager.list()
 
@@ -133,7 +135,7 @@ class SCPServer(BaseModel):
     # 说明相关实现细节。
     # ------------------------------------------------------------------
 
-    async def get_context(self, skill_names: Optional[List[str]] = None) -> str:
+    async def get_context(self, skill_names: builtins.list[str] | None = None) -> str:
         """获取与 `get_context` 对应的数据或状态。"""
         return await self.skill_context_manager.get_context(skill_names=skill_names)
 
@@ -148,8 +150,8 @@ class SCPServer(BaseModel):
     async def __call__(
         self,
         name: str,
-        input: Dict[str, Any],
-        model_name: Optional[str] = None,
+        input: dict[str, Any],
+        model_name: str | None = None,
         ctx: SessionContext = None,
         **kwargs,
     ) -> SkillResponse:

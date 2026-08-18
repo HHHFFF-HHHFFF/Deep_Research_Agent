@@ -9,7 +9,9 @@ from typing import Protocol
 class StorageBackend(Protocol):
     async def read_bytes(self, path: Path) -> bytes: ...
 
-    async def write_bytes(self, path: Path, data: bytes, *, overwrite: bool) -> None: ...
+    async def write_bytes(
+        self, path: Path, data: bytes, *, overwrite: bool
+    ) -> None: ...
 
     async def stat(self, path: Path) -> os.stat_result: ...
 
@@ -52,6 +54,7 @@ class LocalAsyncStorage:
                 # 处理文件与路径。
                 # 处理文件与路径。
                 return [p.name for p in path.iterdir()]
+
         return await asyncio.to_thread(_listdir)
 
     async def exists(self, path: Path) -> bool:

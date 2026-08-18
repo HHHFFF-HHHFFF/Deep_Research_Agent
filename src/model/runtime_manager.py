@@ -91,11 +91,17 @@ class ModelManager:
             self.settings.embedding_model,
         )
 
-    async def _register_chain(self, references: builtins.list[str], model_type: str) -> None:
+    async def _register_chain(
+        self, references: builtins.list[str], model_type: str
+    ) -> None:
         """注册一条模型链，并把每个模型指向下一个备用模型。"""
         unique_references = list(dict.fromkeys(references))
         for index, reference in enumerate(unique_references):
-            fallback = unique_references[index + 1] if index + 1 < len(unique_references) else None
+            fallback = (
+                unique_references[index + 1]
+                if index + 1 < len(unique_references)
+                else None
+            )
             existing = self.models.get(reference)
             if existing:
                 if existing.model_type != model_type:
@@ -210,7 +216,9 @@ class ModelManager:
             raise ValueError(f"不支持的模型提供方：{config.provider}")
 
         self.models[config.model_name] = config
-        self.model_clients[config.model_name] = client or await self._create_client(config)
+        self.model_clients[config.model_name] = client or await self._create_client(
+            config
+        )
         logger.info("| 已注册模型：%s", config.model_name)
 
     def _fallback_chain(self, model: str) -> builtins.list[str]:
@@ -268,7 +276,9 @@ class ModelManager:
             return
 
         input_tokens = usage.get("prompt_tokens") or usage.get("input_tokens") or 0
-        output_tokens = usage.get("completion_tokens") or usage.get("output_tokens") or 0
+        output_tokens = (
+            usage.get("completion_tokens") or usage.get("output_tokens") or 0
+        )
         total_tokens = usage.get("total_tokens") or input_tokens + output_tokens
         logger.info(
             "| 模型用量：model=%s, input=%s, output=%s, total=%s",
@@ -323,7 +333,7 @@ class ModelManager:
                     return result
                 errors.append(f"{candidate}: {result.message}")
             # 提供方 SDK 的异常类型并不统一，路由层必须统一捕获后才能降级。
-            except Exception as error:  # noqa: BLE001
+            except Exception as error:
                 errors.append(f"{candidate}: {error}")
 
             logger.warning("| 模型调用失败，准备尝试备用模型：%s", candidate)
@@ -331,7 +341,9 @@ class ModelManager:
         return LLMResponse(
             success=False,
             message="所有候选模型均调用失败：" + " | ".join(errors),
-            extra=LLMExtra(data={"attempted_models": self._fallback_chain(selected_model)}),
+            extra=LLMExtra(
+                data={"attempted_models": self._fallback_chain(selected_model)}
+            ),
         )
 
     async def achat(

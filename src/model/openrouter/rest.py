@@ -1,13 +1,17 @@
-import httpx
-import json
-from typing import Optional, Dict, Any, List, Union
 from collections.abc import Mapping
+from typing import Any
+
+import httpx
 
 try:
     from openai.types.chat.chat_completion import ChatCompletion, Choice
     from openai.types.chat.chat_completion_message import ChatCompletionMessage
-    from openai.types.chat.chat_completion_message_tool_call import ChatCompletionMessageToolCall
-    from openai.types.chat.chat_completion_message_function_tool_call_param import Function as ChatCompletionFunction
+    from openai.types.chat.chat_completion_message_function_tool_call_param import (
+        Function as ChatCompletionFunction,
+    )
+    from openai.types.chat.chat_completion_message_tool_call import (
+        ChatCompletionMessageToolCall,
+    )
     from openai.types.completion_usage import CompletionUsage
 except ImportError:
     # 执行回退或重试逻辑。
@@ -21,21 +25,27 @@ except ImportError:
 from src.logger import logger
 
 
+class OpenRouterRequestError(RuntimeError):
+    """表示 OpenRouter 请求或响应处理失败。"""
+
+
 class OpenRouterCompletions:
     """定义 `OpenRouterCompletions`，封装相关数据与行为。"""
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
-        base_url: Optional[str] = "https://openrouter.ai/api/v1",
-        http_referer: Optional[str] = None,
-        x_title: Optional[str] = None,
-        default_headers: Optional[Mapping[str, str]] = None,
-        timeout: Optional[Union[float, httpx.Timeout]] = 300.0,
-        http_client: Optional[httpx.AsyncClient] = None,
+        api_key: str | None = None,
+        base_url: str | None = "https://openrouter.ai/api/v1",
+        http_referer: str | None = None,
+        x_title: str | None = None,
+        default_headers: Mapping[str, str] | None = None,
+        timeout: float | httpx.Timeout | None = 300.0,
+        http_client: httpx.AsyncClient | None = None,
     ):
         self.api_key = api_key
-        self.base_url = base_url.rstrip('/') if base_url else "https://openrouter.ai/api/v1"
+        self.base_url = (
+            base_url.rstrip("/") if base_url else "https://openrouter.ai/api/v1"
+        )
         self.http_referer = http_referer
         self.x_title = x_title
         self.default_headers = default_headers
@@ -43,7 +53,7 @@ class OpenRouterCompletions:
         self._http_client = http_client
         self._endpoint = "/chat/completions"
 
-    def _get_headers(self) -> Dict[str, str]:
+    def _get_headers(self) -> dict[str, str]:
         """实现 `_get_headers` 的业务逻辑。"""
         headers = {
             "Content-Type": "application/json",
@@ -68,7 +78,7 @@ class OpenRouterCompletions:
         """实现 `_get_api_url` 的业务逻辑。"""
         return f"{self.base_url}{self._endpoint}"
 
-    def _dict_to_chat_completion(self, data: Dict[str, Any]) -> ChatCompletion:
+    def _dict_to_chat_completion(self, data: dict[str, Any]) -> ChatCompletion:
         """实现 `_dict_to_chat_completion` 的业务逻辑。"""
         if ChatCompletion == dict:
             # 组装并返回结果。
@@ -91,8 +101,8 @@ class OpenRouterCompletions:
                         type="function",
                         function=ChatCompletionFunction(
                             name=function_data.get("name", ""),
-                            arguments=function_data.get("arguments", "{}")
-                        )
+                            arguments=function_data.get("arguments", "{}"),
+                        ),
                     )
                     tool_calls.append(tool_call)
 
@@ -134,13 +144,13 @@ class OpenRouterCompletions:
     async def create(
         self,
         model: str,
-        messages: List[Dict[str, Any]],
-        plugins: Optional[List[Dict[str, Any]]] = None,
+        messages: list[dict[str, Any]],
+        plugins: list[dict[str, Any]] | None = None,
         **kwargs: Any,
     ) -> ChatCompletion:
         """实现 `create` 的业务逻辑。"""
         # 加载所需数据。
-        payload: Dict[str, Any] = {
+        payload: dict[str, Any] = {
             "model": model,
             "messages": messages,
         }
@@ -150,9 +160,7 @@ class OpenRouterCompletions:
             payload["plugins"] = plugins
 
         # 处理输入参数。
-        payload["usage"] = {
-            "include": True
-        }
+        payload["usage"] = {"include": True}
 
         # 处理输入参数。
         for key, value in kwargs.items():
@@ -200,15 +208,18 @@ class OpenRouterCompletions:
             logger.error(f"OpenRouter API HTTP error: {e}")
             try:
                 error_detail = e.response.json()
-                raise Exception(f"OpenRouter API request failed: {error_detail}")
-            except:
-                raise Exception(f"OpenRouter API request failed: {e.response.text}")
+            except (TypeError, ValueError):
+                error_detail = e.response.text
+            raise OpenRouterRequestError(
+                f"OpenRouter API request failed: {error_detail}"
+            ) from e
         except httpx.RequestError as e:
             logger.error(f"OpenRouter API request error: {e}")
-            raise Exception(f"OpenRouter API request failed: {str(e)}")
+            raise OpenRouterRequestError(f"OpenRouter API request failed: {e!s}") from e
         except Exception as e:
             logger.error(f"Unexpected error in OpenRouter API request: {e}")
             raise
+
 
 class OpenRouterChatNamespace:
     """定义 `OpenRouterChatNamespace`，封装相关数据与行为。"""
@@ -222,13 +233,13 @@ class OpenRouterClient:
 
     def __init__(
         self,
-        api_key: Optional[str] = None,
-        base_url: Optional[str] = "https://openrouter.ai/api/v1",
-        http_referer: Optional[str] = None,
-        x_title: Optional[str] = None,
-        default_headers: Optional[Mapping[str, str]] = None,
-        timeout: Optional[Union[float, httpx.Timeout]] = 300.0,
-        http_client: Optional[httpx.AsyncClient] = None,
+        api_key: str | None = None,
+        base_url: str | None = "https://openrouter.ai/api/v1",
+        http_referer: str | None = None,
+        x_title: str | None = None,
+        default_headers: Mapping[str, str] | None = None,
+        timeout: float | httpx.Timeout | None = 300.0,
+        http_client: httpx.AsyncClient | None = None,
     ):
         self.api_key = api_key
         self.base_url = base_url
@@ -246,7 +257,7 @@ class OpenRouterClient:
             x_title=x_title,
             default_headers=default_headers,
             timeout=timeout,
-            http_client=http_client
+            http_client=http_client,
         )
 
         # 创建所需对象。

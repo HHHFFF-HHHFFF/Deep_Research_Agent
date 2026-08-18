@@ -1,3 +1,3 @@
-from .tracer import Tracer, Record
+from .tracer import Record, Tracer
 
-__all__ = ["Tracer", "Record"]
+__all__ = ["Record", "Tracer"]

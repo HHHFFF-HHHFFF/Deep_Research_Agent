@@ -152,7 +152,9 @@ class ModelRuntimeSettings(BaseModel):
         embedding_provider = os.getenv("EMBEDDING_PROVIDER", "qwen")
         embedding_model_id = os.getenv("EMBEDDING_MODEL", "text-embedding-v4")
 
-        resolved_primary = primary_model or normalize_model_reference(model_id, provider)
+        resolved_primary = primary_model or normalize_model_reference(
+            model_id, provider
+        )
         resolved_embedding = embedding_model or normalize_model_reference(
             embedding_model_id,
             embedding_provider,

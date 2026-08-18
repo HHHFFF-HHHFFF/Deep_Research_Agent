@@ -48,21 +48,21 @@ class EmbeddingOpenAI(BaseModel):
 
     @property
     def provider(self) -> str:
-        return 'openai'
+        return "openai"
 
     def _get_client_params(self) -> dict[str, Any]:
         """实现 `_get_client_params` 的业务逻辑。"""
         base_params = {
-            'api_key': self.api_key,
-            'organization': self.organization,
-            'project': self.project,
-            'base_url': self.base_url,
-            'websocket_base_url': self.websocket_base_url,
-            'timeout': self.timeout,
-            'max_retries': self.max_retries,
-            'default_headers': self.default_headers,
-            'default_query': self.default_query,
-            '_strict_response_validation': self._strict_response_validation,
+            "api_key": self.api_key,
+            "organization": self.organization,
+            "project": self.project,
+            "base_url": self.base_url,
+            "websocket_base_url": self.websocket_base_url,
+            "timeout": self.timeout,
+            "max_retries": self.max_retries,
+            "default_headers": self.default_headers,
+            "default_query": self.default_query,
+            "_strict_response_validation": self._strict_response_validation,
         }
 
         # 创建所需对象。
@@ -70,14 +70,16 @@ class EmbeddingOpenAI(BaseModel):
 
         # 说明相关实现细节。
         if self.http_client is not None:
-            client_params['http_client'] = self.http_client
+            client_params["http_client"] = self.http_client
 
         return client_params
 
     def get_client(self) -> AsyncOpenAI:
         """获取与 `get_client` 对应的数据或状态。"""
         if AsyncOpenAI is None:
-            raise ImportError("openai package is required. Install it with: pip install openai")
+            raise ImportError(
+                "openai package is required. Install it with: pip install openai"
+            )
 
         client_params = self._get_client_params()
         return AsyncOpenAI(**client_params)
@@ -147,8 +149,8 @@ class EmbeddingOpenAI(BaseModel):
         """实现 `_call_model` 的业务逻辑。"""
         client = self.get_client()
         # 创建所需对象。
-        if 'input' not in params:
-            params['input'] = input_text
+        if "input" not in params:
+            params["input"] = input_text
         response = await client.embeddings.create(**params)
 
         return response
@@ -160,17 +162,17 @@ class EmbeddingOpenAI(BaseModel):
         """实现 `_format_response` 的业务逻辑。"""
         # 组装并返回结果。
         embeddings = []
-        if hasattr(response, 'data'):
+        if hasattr(response, "data"):
             for item in response.data:
-                if hasattr(item, 'embedding'):
+                if hasattr(item, "embedding"):
                     embeddings.append(item.embedding)
                 elif isinstance(item, dict):
-                    embeddings.append(item.get('embedding'))
+                    embeddings.append(item.get("embedding"))
         elif isinstance(response, dict):
-            data = response.get('data', [])
+            data = response.get("data", [])
             for item in data:
                 if isinstance(item, dict):
-                    embeddings.append(item.get('embedding'))
+                    embeddings.append(item.get("embedding"))
 
         # 组装并返回结果。
         if len(embeddings) == 1:
@@ -200,11 +202,7 @@ class EmbeddingOpenAI(BaseModel):
             }
         )
 
-        return LLMResponse(
-            success=True,
-            message=message,
-            extra=extra
-        )
+        return LLMResponse(success=True, message=message, extra=extra)
 
     async def __call__(
         self,
@@ -215,7 +213,9 @@ class EmbeddingOpenAI(BaseModel):
     ) -> LLMResponse:
         """执行组件调用并返回结果。"""
         if AsyncOpenAI is None:
-            raise ImportError("openai package is required. Install it with: pip install openai")
+            raise ImportError(
+                "openai package is required. Install it with: pip install openai"
+            )
 
         try:
             params = await self._build_params(
@@ -239,26 +239,30 @@ class EmbeddingOpenAI(BaseModel):
             return LLMResponse(
                 success=False,
                 message=f"Rate limit error: {e.message}",
-                extra={"error": str(e), "model": self.name}
+                extra={"error": str(e), "model": self.name},
             )
         except APIConnectionError as e:
             logger.error(f"API connection error: {e}")
             return LLMResponse(
                 success=False,
                 message=f"API connection error: {e!s}",
-                extra={"error": str(e), "model": self.name}
+                extra={"error": str(e), "model": self.name},
             )
         except APIStatusError as e:
             logger.error(f"API status error: {e}")
             return LLMResponse(
                 success=False,
                 message=f"API status error: {e.message}",
-                extra={"error": str(e), "status_code": e.status_code, "model": self.name}
+                extra={
+                    "error": str(e),
+                    "status_code": e.status_code,
+                    "model": self.name,
+                },
             )
         except Exception as e:
             logger.error(f"Unexpected error: {e}")
             return LLMResponse(
                 success=False,
                 message=f"Unexpected error: {e!s}",
-                extra={"error": str(e), "model": self.name}
+                extra={"error": str(e), "model": self.name},
             )

@@ -1,7 +1,9 @@
-from src.registry import PROMPT
+from typing import Any
+
+from pydantic import ConfigDict, Field
+
 from src.prompt.types import Prompt
-from typing import Any, Dict, Literal
-from pydantic import Field, ConfigDict
+from src.registry import PROMPT
 
 AGENT_PROFILE = """
 You are an AI agent that operates in iterative steps and uses registered tools to accomplish the user's task. Your goals are to solve the task accurately, safely, and efficiently.
@@ -232,7 +234,7 @@ SYSTEM_PROMPT = {
             "description": "Describes the agent's core identity, capabilities, and primary objectives for task execution.",
             "require_grad": False,
             "template": None,
-            "variables": AGENT_PROFILE
+            "variables": AGENT_PROFILE,
         },
         "agent_introduction": {
             "name": "agent_introduction",
@@ -240,7 +242,7 @@ SYSTEM_PROMPT = {
             "description": "Defines the agent's core identity, capabilities, and primary objectives for task execution.",
             "require_grad": False,
             "template": None,
-            "variables": AGENT_INTRODUCTION
+            "variables": AGENT_INTRODUCTION,
         },
         "language_settings": {
             "name": "language_settings",
@@ -248,7 +250,7 @@ SYSTEM_PROMPT = {
             "description": "Specifies the default working language and language response preferences for the agent.",
             "require_grad": False,
             "template": None,
-            "variables": LANGUAGE_SETTINGS
+            "variables": LANGUAGE_SETTINGS,
         },
         "input": {
             "name": "input",
@@ -256,7 +258,7 @@ SYSTEM_PROMPT = {
             "description": "Describes the structure and components of input data including agent context, environment context, and tool context.",
             "require_grad": False,
             "template": None,
-            "variables": INPUT
+            "variables": INPUT,
         },
         "agent_context_rules": {
             "name": "agent_context_rules",
@@ -264,7 +266,7 @@ SYSTEM_PROMPT = {
             "description": "Establishes rules for task management, agent history tracking, memory usage, and todo planning strategies.",
             "require_grad": False,
             "template": None,
-            "variables": AGENT_CONTEXT_RULES
+            "variables": AGENT_CONTEXT_RULES,
         },
         "environment_context_rules": {
             "name": "environment_context_rules",
@@ -272,7 +274,7 @@ SYSTEM_PROMPT = {
             "description": "Defines how the agent should interact with and respond to different environmental contexts and conditions.",
             "require_grad": False,
             "template": None,
-            "variables": ENVIRONMENT_CONTEXT_RULES
+            "variables": ENVIRONMENT_CONTEXT_RULES,
         },
         "tool_context_rules": {
             "name": "tool_context_rules",
@@ -280,7 +282,7 @@ SYSTEM_PROMPT = {
             "description": "Provides guidelines for reasoning patterns, tool selection, usage efficiency, and available tool management.",
             "require_grad": True,
             "template": None,
-            "variables": TOOL_CONTEXT_RULES
+            "variables": TOOL_CONTEXT_RULES,
         },
         "skill_context_rules": {
             "name": "skill_context_rules",
@@ -288,7 +290,7 @@ SYSTEM_PROMPT = {
             "description": "Provides guidelines for using loaded skills, their workflows, and utility scripts.",
             "require_grad": False,
             "template": None,
-            "variables": SKILL_CONTEXT_RULES
+            "variables": SKILL_CONTEXT_RULES,
         },
         "example_rules": {
             "name": "example_rules",
@@ -296,7 +298,7 @@ SYSTEM_PROMPT = {
             "description": "Contains few-shot examples and patterns to guide the agent's behavior and tool usage strategies.",
             "require_grad": False,
             "template": None,
-            "variables": EXAMPLE_RULES
+            "variables": EXAMPLE_RULES,
         },
         "reasoning_rules": {
             "name": "reasoning_rules",
@@ -304,7 +306,7 @@ SYSTEM_PROMPT = {
             "description": "Describes the reasoning rules for the agent.",
             "require_grad": True,
             "template": None,
-            "variables": REASONING_RULES
+            "variables": REASONING_RULES,
         },
         "output": {
             "name": "output",
@@ -312,9 +314,9 @@ SYSTEM_PROMPT = {
             "description": "Describes the output format of the agent's response.",
             "require_grad": False,
             "template": None,
-            "variables": OUTPUT
-        }
-    }
+            "variables": OUTPUT,
+        },
+    },
 }
 
 AGENT_MESSAGE_PROMPT = {
@@ -330,7 +332,7 @@ AGENT_MESSAGE_PROMPT = {
             "description": "Describes the agent's current state, including its current task, history, memory, and plans.",
             "require_grad": False,
             "template": None,
-            "variables": None
+            "variables": None,
         },
         "environment_context": {
             "name": "environment_context",
@@ -338,7 +340,7 @@ AGENT_MESSAGE_PROMPT = {
             "description": "Describes the external environment, situational state, and any external conditions that may influence your reasoning or behavior.",
             "require_grad": False,
             "template": None,
-            "variables": None
+            "variables": None,
         },
         "tool_context": {
             "name": "tool_context",
@@ -346,7 +348,7 @@ AGENT_MESSAGE_PROMPT = {
             "description": "Describes the available tools, their purposes, usage conditions, and current operational status.",
             "require_grad": False,
             "template": None,
-            "variables": None
+            "variables": None,
         },
         "skill_context": {
             "name": "skill_context",
@@ -354,7 +356,7 @@ AGENT_MESSAGE_PROMPT = {
             "description": "Describes the available skills with their instructions, workflows, and resources.",
             "require_grad": False,
             "template": None,
-            "variables": None
+            "variables": None,
         },
         "examples": {
             "name": "examples",
@@ -362,33 +364,57 @@ AGENT_MESSAGE_PROMPT = {
             "description": "Contains few-shot examples and patterns to guide the agent's behavior and tool usage strategies.",
             "require_grad": False,
             "template": None,
-            "variables": None
+            "variables": None,
         },
     },
 }
 
+
 @PROMPT.register_module(force=True)
 class ToolCallingSystemPrompt(Prompt):
     """定义 `ToolCallingSystemPrompt`，封装相关数据与行为。"""
+
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="allow")
 
-    type: str = Field(default='system_prompt', description="The type of the prompt")
+    type: str = Field(default="system_prompt", description="The type of the prompt")
     name: str = Field(default="tool_calling", description="The name of the prompt")
-    description: str = Field(default="System prompt for tool-calling agents", description="The description of the prompt")
-    require_grad: bool = Field(default=True, description="Whether the prompt requires gradient")
-    metadata: Dict[str, Any] = Field(default={}, description="The metadata of the prompt")
+    description: str = Field(
+        default="System prompt for tool-calling agents",
+        description="The description of the prompt",
+    )
+    require_grad: bool = Field(
+        default=True, description="Whether the prompt requires gradient"
+    )
+    metadata: dict[str, Any] = Field(
+        default={}, description="The metadata of the prompt"
+    )
 
-    prompt_config: Dict[str, Any] = Field(default=SYSTEM_PROMPT, description="System prompt information")
+    prompt_config: dict[str, Any] = Field(
+        default=SYSTEM_PROMPT, description="System prompt information"
+    )
+
 
 @PROMPT.register_module(force=True)
 class ToolCallingAgentMessagePrompt(Prompt):
     """定义 `ToolCallingAgentMessagePrompt`，封装相关数据与行为。"""
+
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="allow")
 
-    type: str = Field(default='agent_message_prompt', description="The type of the prompt")
+    type: str = Field(
+        default="agent_message_prompt", description="The type of the prompt"
+    )
     name: str = Field(default="tool_calling", description="The name of the prompt")
-    description: str = Field(default="Agent message prompt for tool-calling agents", description="The description of the prompt")
-    require_grad: bool = Field(default=False, description="Whether the prompt requires gradient")
-    metadata: Dict[str, Any] = Field(default={}, description="The metadata of the prompt")
+    description: str = Field(
+        default="Agent message prompt for tool-calling agents",
+        description="The description of the prompt",
+    )
+    require_grad: bool = Field(
+        default=False, description="Whether the prompt requires gradient"
+    )
+    metadata: dict[str, Any] = Field(
+        default={}, description="The metadata of the prompt"
+    )
 
-    prompt_config: Dict[str, Any] = Field(default=AGENT_MESSAGE_PROMPT, description="Agent message prompt information")
+    prompt_config: dict[str, Any] = Field(
+        default=AGENT_MESSAGE_PROMPT, description="Agent message prompt information"
+    )

@@ -1,43 +1,48 @@
 from __future__ import annotations
 
 import asyncio
-import os
 import re
 from pathlib import Path
-from typing import Iterable, List, Optional, Union
 
 from src.environment.filesystem.cache import LRUByteCache
 from src.environment.filesystem.exceptions import (
     ConflictError,
-    InvalidArgumentError,
     NotFoundError,
 )
 from src.environment.filesystem.handlers import (
-    BinaryHandler, CsvHandler, DocxHandler, HandlerRegistry, JsonHandler,
-    MarkdownHandler, PdfHandler, PythonHandler, TextHandler, XlsxHandler
+    BinaryHandler,
+    CsvHandler,
+    DocxHandler,
+    HandlerRegistry,
+    JsonHandler,
+    MarkdownHandler,
+    PdfHandler,
+    PythonHandler,
+    TextHandler,
+    XlsxHandler,
 )
 from src.environment.filesystem.lock_manager import AsyncLockManager
 from src.environment.filesystem.path_policy import PathPolicy
 from src.environment.filesystem.storage import LocalAsyncStorage, StorageBackend
-from src.environment.types import ActionResult
 from src.environment.filesystem.types import (
-    FileReadRequest,
-    SearchMatch,
-    SearchResult,
-    FileWriteRequest,
-    FileReplaceRequest,
-    FileDeleteRequest,
-    FileCopyRequest,
-    FileMoveRequest,
     DirectoryCreateRequest,
     DirectoryDeleteRequest,
+    FileChangePermissionsRequest,
+    FileCopyRequest,
+    FileDeleteRequest,
     FileListRequest,
-    FileTreeRequest,
+    FileMoveRequest,
+    FileReadRequest,
+    FileReplaceRequest,
     FileSearchRequest,
     FileStatRequest,
     FileStats,
-    FileChangePermissionsRequest
+    FileTreeRequest,
+    FileWriteRequest,
+    SearchMatch,
+    SearchResult,
 )
+from src.environment.types import ActionResult
 
 
 class FileSystemService:
@@ -45,13 +50,15 @@ class FileSystemService:
 
     def __init__(
         self,
-        base_dir: Union[str, Path],
+        base_dir: str | Path,
         *,
-        storage: Optional[StorageBackend] = None,
-        cache: Optional[LRUByteCache] = None,
+        storage: StorageBackend | None = None,
+        cache: LRUByteCache | None = None,
     ) -> None:
         """初始化实例。"""
-        self._policy = PathPolicy(Path(base_dir) if isinstance(base_dir, str) else base_dir)
+        self._policy = PathPolicy(
+            Path(base_dir) if isinstance(base_dir, str) else base_dir
+        )
         self._storage = storage or LocalAsyncStorage()
         self._cache = cache or LRUByteCache()
         self._locks = AsyncLockManager()
@@ -97,7 +104,7 @@ class FileSystemService:
             self._compiled_patterns[pattern] = re.compile(pattern)
         return self._compiled_patterns[pattern]
 
-    async def _batch_operations(self, operations: List[callable]) -> List[any]:
+    async def _batch_operations(self, operations: list[callable]) -> list[any]:
         """实现 `_batch_operations` 的业务逻辑。"""
         return await asyncio.gather(*operations, return_exceptions=True)
 
@@ -113,7 +120,10 @@ class FileSystemService:
                     return ActionResult(
                         success=False,
                         message=f"Path not found: {relative}",
-                        extra={"error": f"Path not found: {relative}", "path": str(relative)}
+                        extra={
+                            "error": f"Path not found: {relative}",
+                            "path": str(relative),
+                        },
                     )
                 data = await self._read_raw(absolute, relative)
             handler = self._select_handler(absolute) or TextHandler()
@@ -136,15 +146,13 @@ class FileSystemService:
                 extra["read_time"] = read_result.read_time.isoformat()
 
             return ActionResult(
-                success=True,
-                message=f"Successfully read file {relative}",
-                extra=extra
+                success=True, message=f"Successfully read file {relative}", extra=extra
             )
         except Exception as e:
             return ActionResult(
                 success=False,
-                message=f"Failed to read file: {str(e)}",
-                extra={"error": str(e), "path": str(request.path)}
+                message=f"Failed to read file: {e!s}",
+                extra={"error": str(e), "path": str(request.path)},
             )
 
     async def write(self, request: FileWriteRequest) -> ActionResult:
@@ -153,14 +161,16 @@ class FileSystemService:
             return ActionResult(
                 success=False,
                 message="mode must be 'w' or 'a'",
-                extra={"error": "mode must be 'w' or 'a'", "mode": request.mode}
+                extra={"error": "mode must be 'w' or 'a'", "mode": request.mode},
             )
 
         try:
             absolute = self._policy.resolve_relative(request.path)
             relative = self._policy.to_relative(absolute)
             handler = self._select_handler(absolute) or TextHandler()
-            data = await handler.encode(request.content, mode=request.mode, encoding=request.encoding)
+            data = await handler.encode(
+                request.content, mode=request.mode, encoding=request.encoding
+            )
             key = self._key(relative)
 
             async with self._locks.acquire(key):
@@ -176,17 +186,19 @@ class FileSystemService:
                 extra={
                     "path": str(relative),
                     "bytes_written": len(data),
-                    "mode": request.mode
-                }
+                    "mode": request.mode,
+                },
             )
         except Exception as e:
             return ActionResult(
                 success=False,
-                message=f"Failed to write file: {str(e)}",
-                extra={"error": str(e), "path": str(request.path)}
+                message=f"Failed to write file: {e!s}",
+                extra={"error": str(e), "path": str(request.path)},
             )
 
-    async def write_bytes(self, path: Path, data: bytes, *, overwrite: bool = True) -> None:
+    async def write_bytes(
+        self, path: Path, data: bytes, *, overwrite: bool = True
+    ) -> None:
         absolute = self._policy.resolve_relative(path)
         relative = self._policy.to_relative(absolute)
         key = self._key(relative)
@@ -205,7 +217,7 @@ class FileSystemService:
                 as_text=True,
                 encoding=request.encoding,
                 start_line=None,
-                end_line=None
+                end_line=None,
             )
             result = await self.read(read_req)
             text = result.content_text or ""
@@ -222,32 +234,35 @@ class FileSystemService:
                 after = "\n".join(lines[e:])
                 count = target.count(request.old_string)
                 target = target.replace(request.old_string, request.new_string)
-                new_text = "\n".join(filter(lambda x: x is not None, [before if before else None, target, after if after else None]))
+                new_text = "\n".join(
+                    filter(
+                        lambda x: x is not None,
+                        [before if before else None, target, after if after else None],
+                    )
+                )
             else:
                 count = text.count(request.old_string)
                 new_text = text.replace(request.old_string, request.new_string)
 
             write_req = FileWriteRequest(
-                path=request.path,
-                content=new_text,
-                mode="w",
-                encoding=request.encoding
+                path=request.path, content=new_text, mode="w", encoding=request.encoding
             )
             await self.write_text(write_req)
 
             return ActionResult(
                 success=True,
                 message=f"Successfully made {count} replacements in {request.path}",
-                extra={
-                    "path": str(request.path),
-                    "replacements_made": count
-                }
+                extra={"path": str(request.path), "replacements_made": count},
             )
         except Exception as e:
             return ActionResult(
                 success=False,
-                message=f"Failed to replace text: {str(e)}",
-                extra={"error": str(e), "path": str(request.path), "replacements_made": 0}
+                message=f"Failed to replace text: {e!s}",
+                extra={
+                    "error": str(e),
+                    "path": str(request.path),
+                    "replacements_made": 0,
+                },
             )
 
     async def delete(self, request: FileDeleteRequest) -> ActionResult:
@@ -266,13 +281,13 @@ class FileSystemService:
             return ActionResult(
                 success=True,
                 message=f"Successfully deleted {relative}",
-                extra={"path": str(relative)}
+                extra={"path": str(relative)},
             )
         except Exception as e:
             return ActionResult(
                 success=False,
-                message=f"Failed to delete file: {str(e)}",
-                extra={"error": str(e), "path": str(request.path)}
+                message=f"Failed to delete file: {e!s}",
+                extra={"error": str(e), "path": str(request.path)},
             )
 
     async def copy(self, request: FileCopyRequest) -> ActionResult:
@@ -291,18 +306,18 @@ class FileSystemService:
                 extra={
                     "src_path": str(relative),
                     "dst_path": str(request.dst_path),
-                    "overwrite": request.overwrite
-                }
+                    "overwrite": request.overwrite,
+                },
             )
         except Exception as e:
             return ActionResult(
                 success=False,
-                message=f"Failed to copy file: {str(e)}",
+                message=f"Failed to copy file: {e!s}",
                 extra={
                     "error": str(e),
                     "src_path": str(request.src_path),
-                    "dst_path": str(request.dst_path)
-                }
+                    "dst_path": str(request.dst_path),
+                },
             )
 
     async def rename(self, request: FileMoveRequest) -> ActionResult:
@@ -314,18 +329,17 @@ class FileSystemService:
             r_dst = self._policy.to_relative(a_dst)
             k_src, k_dst = sorted([self._key(r_src), self._key(r_dst)])
 
-            async with self._locks.acquire(k_src):
-                async with self._locks.acquire(k_dst):
-                    if not await self._storage.exists(a_src):
-                        raise NotFoundError(f"Path not found: {r_src}")
-                    if await self._storage.exists(a_dst) and not request.overwrite:
-                        raise ConflictError(f"Destination exists: {r_dst}")
-                    await self._storage.rename(a_src, a_dst)
-                    # 处理记忆或缓存状态。
-                    data = self._cache.get(self._key(r_src))
-                    self._cache.delete(self._key(r_src))
-                    if data is not None:
-                        self._cache.put(self._key(r_dst), data)
+            async with self._locks.acquire(k_src), self._locks.acquire(k_dst):
+                if not await self._storage.exists(a_src):
+                    raise NotFoundError(f"Path not found: {r_src}")
+                if await self._storage.exists(a_dst) and not request.overwrite:
+                    raise ConflictError(f"Destination exists: {r_dst}")
+                await self._storage.rename(a_src, a_dst)
+                # 处理记忆或缓存状态。
+                data = self._cache.get(self._key(r_src))
+                self._cache.delete(self._key(r_src))
+                if data is not None:
+                    self._cache.put(self._key(r_dst), data)
 
             return ActionResult(
                 success=True,
@@ -333,18 +347,18 @@ class FileSystemService:
                 extra={
                     "src_path": str(r_src),
                     "dst_path": str(r_dst),
-                    "overwrite": request.overwrite
-                }
+                    "overwrite": request.overwrite,
+                },
             )
         except Exception as e:
             return ActionResult(
                 success=False,
-                message=f"Failed to move file: {str(e)}",
+                message=f"Failed to move file: {e!s}",
                 extra={
                     "error": str(e),
                     "src_path": str(request.src_path),
-                    "dst_path": str(request.dst_path)
-                }
+                    "dst_path": str(request.dst_path),
+                },
             )
 
     async def mkdir(self, request: DirectoryCreateRequest) -> ActionResult:
@@ -359,13 +373,13 @@ class FileSystemService:
             return ActionResult(
                 success=True,
                 message=f"Successfully created directory {relative}",
-                extra={"path": str(relative), "parents": request.parents}
+                extra={"path": str(relative), "parents": request.parents},
             )
         except Exception as e:
             return ActionResult(
                 success=False,
-                message=f"Failed to create directory: {str(e)}",
-                extra={"error": str(e), "path": str(request.path)}
+                message=f"Failed to create directory: {e!s}",
+                extra={"error": str(e), "path": str(request.path)},
             )
 
     async def rmtree(self, request: DirectoryDeleteRequest) -> ActionResult:
@@ -387,13 +401,13 @@ class FileSystemService:
             return ActionResult(
                 success=True,
                 message=f"Successfully deleted directory {relative}",
-                extra={"path": str(relative), "recursive": request.recursive}
+                extra={"path": str(relative), "recursive": request.recursive},
             )
         except Exception as e:
             return ActionResult(
                 success=False,
-                message=f"Failed to delete directory: {str(e)}",
-                extra={"error": str(e), "path": str(request.path)}
+                message=f"Failed to delete directory: {e!s}",
+                extra={"error": str(e), "path": str(request.path)},
             )
 
     async def stat(self, request: FileStatRequest) -> ActionResult:
@@ -406,7 +420,11 @@ class FileSystemService:
                 return ActionResult(
                     success=False,
                     message=f"Path not found: {relative}",
-                    extra={"error": f"Path not found: {relative}", "path": str(relative), "exists": False}
+                    extra={
+                        "error": f"Path not found: {relative}",
+                        "path": str(relative),
+                        "exists": False,
+                    },
                 )
 
             stat_result = await self._storage.stat(absolute)
@@ -420,7 +438,7 @@ class FileSystemService:
                 permissions=oct(stat_result.st_mode)[-3:],
                 is_directory=stat_result.st_mode & 0o170000 == 0o040000,
                 is_file=stat_result.st_mode & 0o170000 == 0o100000,
-                is_symlink=stat_result.st_mode & 0o170000 == 0o120000
+                is_symlink=stat_result.st_mode & 0o170000 == 0o120000,
             )
 
             return ActionResult(
@@ -429,14 +447,14 @@ class FileSystemService:
                 extra={
                     "path": str(relative),
                     "stats": file_stats.model_dump(),
-                    "exists": True
-                }
+                    "exists": True,
+                },
             )
         except Exception as e:
             return ActionResult(
                 success=False,
-                message=f"Failed to get file stats: {str(e)}",
-                extra={"error": str(e), "path": str(request.path), "exists": False}
+                message=f"Failed to get file stats: {e!s}",
+                extra={"error": str(e), "path": str(request.path), "exists": False},
             )
 
     async def listdir(self, request: FileListRequest) -> ActionResult:
@@ -455,17 +473,24 @@ class FileSystemService:
                 try:
                     stat_result = await self._storage.stat(entry_path)
                     if stat_result.st_mode & 0o170000 == 0o040000:  # 处理文件与路径。
-                        if request.show_hidden or not entry.startswith('.'):
+                        if request.show_hidden or not entry.startswith("."):
                             directories.append(entry)
-                    elif stat_result.st_mode & 0o170000 == 0o100000:  # 处理文件与路径。
-                        if request.show_hidden or not entry.startswith('.'):
-                            if request.file_types is None or any(entry.endswith(ext) for ext in request.file_types):
-                                files.append(entry)
+                    elif (
+                        stat_result.st_mode & 0o170000 == 0o100000
+                        and (request.show_hidden or not entry.startswith("."))
+                        and (
+                            request.file_types is None
+                            or any(entry.endswith(ext) for ext in request.file_types)
+                        )
+                    ):
+                        files.append(entry)
                 except Exception:
                     # 处理文件与路径。
-                    if request.show_hidden or not entry.startswith('.'):
-                        if request.file_types is None or any(entry.endswith(ext) for ext in request.file_types):
-                            files.append(entry)
+                    if (request.show_hidden or not entry.startswith(".")) and (
+                        request.file_types is None
+                        or any(entry.endswith(ext) for ext in request.file_types)
+                    ):
+                        files.append(entry)
 
             return ActionResult(
                 success=True,
@@ -475,21 +500,21 @@ class FileSystemService:
                     "files": files,
                     "directories": directories,
                     "total_files": len(files),
-                    "total_directories": len(directories)
-                }
+                    "total_directories": len(directories),
+                },
             )
         except Exception as e:
             return ActionResult(
                 success=False,
-                message=f"Failed to list directory: {str(e)}",
+                message=f"Failed to list directory: {e!s}",
                 extra={
                     "error": str(e),
                     "path": str(request.path),
                     "files": [],
                     "directories": [],
                     "total_files": 0,
-                    "total_directories": 0
-                }
+                    "total_directories": 0,
+                },
             )
 
     async def tree(self, request: FileTreeRequest) -> ActionResult:
@@ -501,7 +526,9 @@ class FileSystemService:
             exclude_patterns = request.exclude_patterns or []
 
             # 说明相关实现细节。
-            compiled_exclude_patterns = [self._compile_pattern(pattern) for pattern in exclude_patterns]
+            compiled_exclude_patterns = [
+                self._compile_pattern(pattern) for pattern in exclude_patterns
+            ]
 
             # 更新相关状态。
             file_types_set = set(request.file_types) if request.file_types else None
@@ -509,27 +536,36 @@ class FileSystemService:
             async def _walk(current: Path, prefix: str, depth: int) -> None:
                 if depth >= request.max_depth:
                     return
-                entries = sorted(current.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower()))
+                entries = sorted(
+                    current.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())
+                )
                 for i, entry in enumerate(entries):
                     name = entry.name
-                    if not request.show_hidden and name.startswith('.'):
+                    if not request.show_hidden and name.startswith("."):
                         continue
-                    if any(compiled_pattern.search(name) for compiled_pattern in compiled_exclude_patterns):
+                    if any(
+                        compiled_pattern.search(name)
+                        for compiled_pattern in compiled_exclude_patterns
+                    ):
                         continue
-                    if file_types_set and entry.is_file() and entry.suffix.lower() not in file_types_set:
+                    if (
+                        file_types_set
+                        and entry.is_file()
+                        and entry.suffix.lower() not in file_types_set
+                    ):
                         continue
                     is_last = i == len(entries) - 1
-                    connector = '└── ' if is_last else '├── '
+                    connector = "└── " if is_last else "├── "
                     lines.append(f"{prefix}{connector}{name}")
                     if entry.is_dir():
                         next_prefix = f"{prefix}{'    ' if is_last else '│   '}"
                         await _walk(entry, next_prefix, depth + 1)
 
-            await _walk(absolute, '', 0)
+            await _walk(absolute, "", 0)
 
             # 处理文件与路径。
-            total_files = sum(1 for line in lines if not line.endswith('/'))
-            total_directories = sum(1 for line in lines if line.endswith('/'))
+            total_files = sum(1 for line in lines if not line.endswith("/"))
+            total_directories = sum(1 for line in lines if line.endswith("/"))
 
             return ActionResult(
                 success=True,
@@ -539,23 +575,25 @@ class FileSystemService:
                     "tree_lines": lines,
                     "total_files": total_files,
                     "total_directories": total_directories,
-                    "max_depth": request.max_depth
-                }
+                    "max_depth": request.max_depth,
+                },
             )
         except Exception as e:
             return ActionResult(
                 success=False,
-                message=f"Failed to generate tree: {str(e)}",
+                message=f"Failed to generate tree: {e!s}",
                 extra={
                     "error": str(e),
                     "path": str(request.path),
                     "tree_lines": [],
                     "total_files": 0,
-                    "total_directories": 0
-                }
+                    "total_directories": 0,
+                },
             )
 
-    async def collect_all_files(self, path: Path, *, max_files: int = 100) -> list[Path]:
+    async def collect_all_files(
+        self, path: Path, *, max_files: int = 100
+    ) -> list[Path]:
         """实现 `collect_all_files` 的业务逻辑。"""
         all_files = []
 
@@ -574,15 +612,19 @@ class FileSystemService:
                         # 校验输入与当前状态。
                         try:
                             stat = await self._storage.stat(absolute_path)
-                            if stat.st_mode & 0o170000 == 0o100000:  # 校验输入与当前状态。
+                            if (
+                                stat.st_mode & 0o170000 == 0o100000
+                            ):  # 校验输入与当前状态。
                                 all_files.append(item_path)
-                            elif stat.st_mode & 0o170000 == 0o040000:  # 校验输入与当前状态。
+                            elif (
+                                stat.st_mode & 0o170000 == 0o040000
+                            ):  # 校验输入与当前状态。
                                 await _collect_files(item_path)
                         except Exception:
                             # 执行回退或重试逻辑。
                             all_files.append(item_path)
             except Exception:
-                pass
+                return
 
         await _collect_files(path)
         return all_files
@@ -591,12 +633,14 @@ class FileSystemService:
         """实现 `search` 的业务逻辑。"""
         try:
             absolute = self._policy.resolve_relative(request.path)
-            relative = self._policy.to_relative(absolute)
+            _relative = self._policy.to_relative(absolute)
             results: list[SearchResult] = []
 
             # 说明相关实现细节。
             file_types_set = set(request.file_types) if request.file_types else None
-            search_query = request.query if request.case_sensitive else request.query.lower()
+            search_query = (
+                request.query if request.case_sensitive else request.query.lower()
+            )
             max_matches_per_file = 50
 
             def _match_name(name: str) -> bool:
@@ -605,17 +649,19 @@ class FileSystemService:
                     return search_query in name.lower()
                 return request.query in name
 
-            async def _search_file(file_path: Path) -> Optional[SearchResult]:
+            async def _search_file(file_path: Path) -> SearchResult | None:
                 """实现 `_search_file` 的业务逻辑。"""
                 if request.by == "name":
                     if _match_name(file_path.name):
-                        return SearchResult(path=self._policy.to_relative(file_path), matches=[])
+                        return SearchResult(
+                            path=self._policy.to_relative(file_path), matches=[]
+                        )
                     return None
 
                 # 检索所需信息。
                 try:
                     data = await self._storage.read_bytes(file_path)
-                    text = data.decode('utf-8', errors='ignore')
+                    text = data.decode("utf-8", errors="ignore")
                     lines = text.splitlines()
                     matches: list[SearchMatch] = []
 
@@ -628,7 +674,9 @@ class FileSystemService:
                             matches.append(SearchMatch(line=idx, text=line))
 
                     if matches:
-                        return SearchResult(path=self._policy.to_relative(file_path), matches=matches)
+                        return SearchResult(
+                            path=self._policy.to_relative(file_path), matches=matches
+                        )
                 except Exception:
                     return None
                 return None
@@ -651,7 +699,10 @@ class FileSystemService:
                     for entry in files:
                         if len(results) >= request.max_results:
                             return
-                        if file_types_set and entry.suffix.lower() not in file_types_set:
+                        if (
+                            file_types_set
+                            and entry.suffix.lower() not in file_types_set
+                        ):
                             continue
                         res = await _search_file(entry)
                         if res:
@@ -659,7 +710,7 @@ class FileSystemService:
                             if len(results) >= request.max_results:
                                 return
                 except Exception:
-                    pass  # 说明相关实现细节。
+                    return
 
             if absolute.is_file():
                 single = await _search_file(absolute)
@@ -672,7 +723,7 @@ class FileSystemService:
                 {
                     "path": str(r.path),
                     "matches": [m.model_dump() for m in r.matches],
-                    "total_matches": r.total_matches
+                    "total_matches": r.total_matches,
                 }
                 for r in results
             ]
@@ -685,23 +736,25 @@ class FileSystemService:
                     "search_by": request.by,
                     "results": results_dict,
                     "total_found": len(results),
-                    "case_sensitive": request.case_sensitive
-                }
+                    "case_sensitive": request.case_sensitive,
+                },
             )
         except Exception as e:
             return ActionResult(
                 success=False,
-                message=f"Failed to search files: {str(e)}",
+                message=f"Failed to search files: {e!s}",
                 extra={
                     "error": str(e),
                     "query": request.query,
                     "search_by": request.by,
                     "results": [],
-                    "total_found": 0
-                }
+                    "total_found": 0,
+                },
             )
 
-    async def change_permissions(self, request: FileChangePermissionsRequest) -> ActionResult:
+    async def change_permissions(
+        self, request: FileChangePermissionsRequest
+    ) -> ActionResult:
         """实现 `change_permissions` 的业务逻辑。"""
         try:
             absolute = self._policy.resolve_relative(request.path)
@@ -713,21 +766,19 @@ class FileSystemService:
             return ActionResult(
                 success=True,
                 message=f"Successfully changed permissions for {relative}",
-                extra={
-                    "path": str(relative),
-                    "permissions": request.permissions
-                }
+                extra={"path": str(relative), "permissions": request.permissions},
             )
         except Exception as e:
             return ActionResult(
                 success=False,
-                message=f"Failed to change permissions: {str(e)}",
+                message=f"Failed to change permissions: {e!s}",
                 extra={
                     "error": str(e),
                     "path": str(request.path),
-                    "permissions": request.permissions
-                }
+                    "permissions": request.permissions,
+                },
             )
+
     async def describe(self) -> str:
         """实现 `describe` 的业务逻辑。"""
         return "The file system is a file system that provides file operations as an environment interface."

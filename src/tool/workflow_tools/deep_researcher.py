@@ -2,21 +2,18 @@
 
 import asyncio
 import os
-import uuid
-from typing import List, Dict, Any, Optional
-from pydantic import BaseModel, Field, ConfigDict
+from typing import Any
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from src.logger import logger
-from src.model import model_manager
-from src.utils import make_file_url, generate_unique_id
-from src.utils import assemble_project_path
-from src.utils import dedent
 from src.message.types import HumanMessage, SystemMessage
-from src.tool.types import Tool, ToolResponse, ToolExtra
-from src.tool.default_tools.web_searcher import WebSearcherTool
+from src.model import model_manager
 from src.registry import TOOL
+from src.tool.default_tools.web_searcher import WebSearcherTool
+from src.tool.types import Tool, ToolExtra, ToolResponse
 from src.tool.workflow_tools.reporter import Report
-
+from src.utils import assemble_project_path, dedent, generate_unique_id, make_file_url
 
 _DEEP_RESEARCHER_DESCRIPTION = """Deep research tool that performs multi-round web search and content analysis.
 This tool will:
@@ -34,17 +31,29 @@ Args:
 Example: {"name": "deep_researcher", "args": {"task": "What is the capital of France?", "image": "/path/to/image.jpg", "filter_year": 2025, "title": "Research Report"}}.
 """
 
+
 class CompletenessEvaluation(BaseModel):
     """定义 `CompletenessEvaluation`，封装相关数据与行为。"""
-    is_complete: bool = Field(description="Whether the summary provides a complete answer to the research task")
-    reasoning: str = Field(description="Brief explanation of why the answer is or isn't complete")
+
+    is_complete: bool = Field(
+        description="Whether the summary provides a complete answer to the research task"
+    )
+    reasoning: str = Field(
+        description="Brief explanation of why the answer is or isn't complete"
+    )
 
 
 class ResearchSummary(BaseModel):
     """定义 `ResearchSummary`，封装相关数据与行为。"""
+
     summary: str = Field(description="Comprehensive summary of the research findings")
-    answer_found: bool = Field(description="Whether a complete answer was found to the research task")
-    answer_status: str = Field(description="Clear statement about whether the answer was found or not found")
+    answer_found: bool = Field(
+        description="Whether a complete answer was found to the research task"
+    )
+    answer_status: str = Field(
+        description="Clear statement about whether the answer was found or not found"
+    )
+
 
 @TOOL.register_module(force=True)
 class DeepResearcherTool(Tool):
@@ -54,44 +63,48 @@ class DeepResearcherTool(Tool):
 
     name: str = "deep_researcher"
     description: str = _DEEP_RESEARCHER_DESCRIPTION
-    metadata: Dict[str, Any] = Field(default={}, description="The metadata of the tool")
-    require_grad: bool = Field(default=False, description="Whether the tool requires gradients")
+    metadata: dict[str, Any] = Field(default={}, description="The metadata of the tool")
+    require_grad: bool = Field(
+        default=False, description="Whether the tool requires gradients"
+    )
 
     # 配置相关参数。
     max_rounds: int = Field(default=3, description="Maximum search rounds")
-    num_results: int = Field(default=5, description="Number of search results per round")
+    num_results: int = Field(
+        default=5, description="Number of search results per round"
+    )
     model_name: str = Field(
         default="openrouter/gemini-3-flash-preview",
-        description="The model to use for query generation and answer evaluation."
+        description="The model to use for query generation and answer evaluation.",
     )
     web_searcher: WebSearcherTool = Field(
-        default=None,
-        description="The web searcher to use for the deep researcher."
+        default=None, description="The web searcher to use for the deep researcher."
     )
-    research_history: List[Dict[str, Any]] = Field(
+    research_history: list[dict[str, Any]] = Field(
         default_factory=list,
-        description="The research history with queries and summaries."
+        description="The research history with queries and summaries.",
     )
     use_llm_search: bool = Field(
-        default=True,
-        description="Whether to use LLM to search the web."
+        default=True, description="Whether to use LLM to search the web."
     )
-    search_llm_models: List[str] = Field(
+    search_llm_models: list[str] = Field(
         default=["openrouter/o3-deep-research", "openrouter/sonar-deep-research"],
-        description="The LLM models to use for searching the web."
+        description="The LLM models to use for searching the web.",
     )
     base_dir: str = Field(
         default="workdir/deep_researcher",
-        description="The base directory for the deep researcher."
+        description="The base directory for the deep researcher.",
     )
 
-    def __init__(self,
-                 base_dir: Optional[str] = None,
-                 model_name: Optional[str] = None,
-                 use_llm_search: Optional[bool] = None,
-                 search_llm_models: Optional[List[str]] = None,
-                 require_grad: bool = False,
-                 **kwargs):
+    def __init__(
+        self,
+        base_dir: str | None = None,
+        model_name: str | None = None,
+        use_llm_search: bool | None = None,
+        search_llm_models: list[str] | None = None,
+        require_grad: bool = False,
+        **kwargs,
+    ):
         """初始化实例。"""
         super().__init__(require_grad=require_grad, **kwargs)
 
@@ -120,12 +133,14 @@ class DeepResearcherTool(Tool):
         # 检索所需信息。
         self.use_llm_search = self.use_llm_search and len(self.search_llm_models) > 0
 
-    async def __call__(self,
-                       task: str,
-                       image: Optional[str] = None,
-                       filter_year: Optional[int] = None,
-                       title: Optional[str] = None,
-                       **kwargs) -> ToolResponse:
+    async def __call__(
+        self,
+        task: str,
+        image: str | None = None,
+        filter_year: int | None = None,
+        title: str | None = None,
+        **kwargs,
+    ) -> ToolResponse:
         """执行组件调用并返回结果。"""
         try:
             logger.info(f"🔍 Starting deep research for task: {task}")
@@ -134,17 +149,19 @@ class DeepResearcherTool(Tool):
             id = generate_unique_id(prefix="deep_researcher")
 
             # 创建所需对象。
-            research_history: List[Dict[str, Any]] = []
+            research_history: list[dict[str, Any]] = []
 
             # 创建所需对象。
             md_filename = f"{id}.md"
-            file_path = os.path.join(self.base_dir, md_filename) if self.base_dir else None
+            file_path = (
+                os.path.join(self.base_dir, md_filename) if self.base_dir else None
+            )
 
             report_title = title if title is not None else "Research Report"
             report = Report(
                 title=report_title,
                 model_name=self.model_name,
-                report_file_path=file_path
+                report_file_path=file_path,
             )
 
             # 转换并规范化数据。
@@ -161,7 +178,9 @@ class DeepResearcherTool(Tool):
                 logger.info(f"📋 Starting round {round_num}/{self.max_rounds}")
 
                 # 处理输入参数。
-                query = await self._generate_search_query(task, round_num, image, research_history)
+                query = await self._generate_search_query(
+                    task, round_num, image, research_history
+                )
                 logger.info(f"| ✅ Generated query for round {round_num}: {query}")
 
                 # 检索所需信息。
@@ -176,7 +195,9 @@ class DeepResearcherTool(Tool):
 
                 # 组装并返回结果。
                 merged_summary = self._merge_search_results(search_results)
-                logger.info(f"| ✅ Merged {len(search_results)} search results: {merged_summary[:1000]}...")
+                logger.info(
+                    f"| ✅ Merged {len(search_results)} search results: {merged_summary[:1000]}..."
+                )
 
                 # 转换并规范化数据。
                 round_info = {
@@ -192,18 +213,22 @@ class DeepResearcherTool(Tool):
                 # 说明相关实现细节。
                 round_content = f"## Round {round_num}\n\n### Search Query\n\n{query}\n\n### Search Results\n\n{merged_summary}\n\n"
                 if evaluation:
-                    round_content += f"### Evaluation\n\n"
+                    round_content += "### Evaluation\n\n"
                     round_content += f"- **Answer Found**: {'Yes' if evaluation.is_complete else 'No'}\n"
                     round_content += f"- **Reasoning**: {evaluation.reasoning}\n\n"
 
                 await report.add_item(content=round_content)
 
                 if evaluation.is_complete:
-                    logger.info(f"✅ Answer found in round {round_num}: {evaluation.reasoning[:100]}...")
+                    logger.info(
+                        f"✅ Answer found in round {round_num}: {evaluation.reasoning[:100]}..."
+                    )
                     final_evaluation = evaluation
                     break
 
-                logger.info(f"| ⏭️ Round {round_num} completed, continuing to next round")
+                logger.info(
+                    f"| ⏭️ Round {round_num} completed, continuing to next round"
+                )
 
             # 说明相关实现细节。
             answer_found = final_evaluation.is_complete if final_evaluation else False
@@ -226,7 +251,9 @@ class DeepResearcherTool(Tool):
                         "reasoning": final_evaluation.reasoning,
                     }
 
-                message = f"Deep research summary: {summary}\n\nReport saved to: {file_path}"
+                message = (
+                    f"Deep research summary: {summary}\n\nReport saved to: {file_path}"
+                )
 
                 # 组装并返回结果。
                 return ToolResponse(
@@ -240,9 +267,9 @@ class DeepResearcherTool(Tool):
                             "history": research_history,
                             "file_path": file_path,
                             "answer_found": answer_found,
-                            "evaluation": evaluation_info
-                        }
-                    )
+                            "evaluation": evaluation_info,
+                        },
+                    ),
                 )
             else:
                 # 执行回退或重试逻辑。
@@ -266,27 +293,45 @@ class DeepResearcherTool(Tool):
                             "history": research_history,
                             "file_path": file_path,
                             "answer_found": answer_found,
-                            "evaluation": evaluation_info
-                        }
-                    )
+                            "evaluation": evaluation_info,
+                        },
+                    ),
                 )
 
         except Exception as e:
             logger.error(f"❌ Error in deep research: {e}")
-            return ToolResponse(success=False, message=f"Error during deep research: {e}")
+            return ToolResponse(
+                success=False, message=f"Error during deep research: {e}"
+            )
 
-    async def _generate_search_query(self, task: str, round_num: int, image: Optional[str] = None, research_history: Optional[List[Dict[str, Any]]] = None) -> str:
+    async def _generate_search_query(
+        self,
+        task: str,
+        round_num: int,
+        image: str | None = None,
+        research_history: list[dict[str, Any]] | None = None,
+    ) -> str:
         """实现 `_generate_search_query` 的业务逻辑。"""
         system_prompt = """You are a helpful assistant that can analyze tasks and images to generate optimized search queries."""
 
         # 创建所需对象。
         previous_summaries = []
         if research_history:
-            for i, round_info in enumerate(research_history[-2:], 1):  # 说明相关实现细节。
-                previous_summaries.append(f"Round {round_info['round_number']} query: {round_info['query']}")
-                previous_summaries.append(f"Summary: {round_info['summary'][:200]}...")  # 说明相关实现细节。
+            for i, round_info in enumerate(
+                research_history[-2:], 1
+            ):  # 说明相关实现细节。
+                previous_summaries.append(
+                    f"Round {round_info['round_number']} query: {round_info['query']}"
+                )
+                previous_summaries.append(
+                    f"Summary: {round_info['summary'][:200]}..."
+                )  # 说明相关实现细节。
 
-        previous_context = "\n".join(previous_summaries) if previous_summaries else "No previous searches yet."
+        previous_context = (
+            "\n".join(previous_summaries)
+            if previous_summaries
+            else "No previous searches yet."
+        )
         image_context = f"And this image: {image}" if image else "No image provided"
         round_context = f"Round: {round_num}" if round_num > 1 else "Round: 1 (initial)"
 
@@ -309,33 +354,46 @@ class DeepResearcherTool(Tool):
 
         Return only the search query, nothing else.""")
 
-        if image and image.lower().endswith(('.jpg', '.jpeg', '.png')):
+        if image and image.lower().endswith((".jpg", ".jpeg", ".png")):
             # 检索所需信息。
             messages = [
                 SystemMessage(content=system_prompt),
-                HumanMessage(content=[
-                    {"type": "text", "text": user_prompt},
-                    {"type": "image_url", "image_url": {"url": make_file_url(file_path=assemble_project_path(image))}}
-                ])
+                HumanMessage(
+                    content=[
+                        {"type": "text", "text": user_prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": make_file_url(
+                                    file_path=assemble_project_path(image)
+                                )
+                            },
+                        },
+                    ]
+                ),
             ]
         else:
             # 检索所需信息。
             messages = [
                 SystemMessage(content=system_prompt),
-                HumanMessage(content=user_prompt)
+                HumanMessage(content=user_prompt),
             ]
 
         response = await model_manager(model=self.model_name, messages=messages)
         return response.message.strip()
 
-    async def _parallel_search(self, task: str, query: str, filter_year: Optional[int]) -> List[Dict[str, Any]]:
+    async def _parallel_search(
+        self, task: str, query: str, filter_year: int | None
+    ) -> list[dict[str, Any]]:
         """实现 `_parallel_search` 的业务逻辑。"""
         search_tasks = []
 
         if self.use_llm_search:
             # 检索所需信息。
             if not self.search_llm_models:
-                logger.warning("use_llm_search is True but no search_llm_models configured")
+                logger.warning(
+                    "use_llm_search is True but no search_llm_models configured"
+                )
                 return []
 
             for model_name in self.search_llm_models:
@@ -347,7 +405,7 @@ class DeepResearcherTool(Tool):
                             return {
                                 "source": model,
                                 "summary": summary,
-                                "success": True
+                                "success": True,
                             }
                         except Exception as e:
                             logger.warning(f"LLM search with {model} failed: {e}")
@@ -355,8 +413,9 @@ class DeepResearcherTool(Tool):
                                 "source": model,
                                 "summary": None,
                                 "success": False,
-                                "error": str(e)
+                                "error": str(e),
                             }
+
                     return llm_search_task
 
                 search_tasks.append(create_llm_task(model_name)())
@@ -367,20 +426,20 @@ class DeepResearcherTool(Tool):
                     response = await self.web_searcher(
                         query=query,
                         num_results=self.num_results,
-                        filter_year=filter_year
+                        filter_year=filter_year,
                     )
                     if response.success:
                         return {
                             "source": "web_searcher",
                             "summary": response.message.strip(),
-                            "success": True
+                            "success": True,
                         }
                     else:
                         return {
                             "source": "web_searcher",
                             "summary": None,
                             "success": False,
-                            "error": response.message
+                            "error": response.message,
                         }
                 except Exception as e:
                     logger.warning(f"Web searcher failed: {e}")
@@ -388,7 +447,7 @@ class DeepResearcherTool(Tool):
                         "source": "web_searcher",
                         "summary": None,
                         "success": False,
-                        "error": str(e)
+                        "error": str(e),
                     }
 
             search_tasks.append(web_search_task())
@@ -405,7 +464,9 @@ class DeepResearcherTool(Tool):
             if result.get("success") and result.get("summary"):
                 search_results.append(result)
             else:
-                logger.warning(f"Search from {result.get('source', 'unknown')} failed: {result.get('error', 'Unknown error')}")
+                logger.warning(
+                    f"Search from {result.get('source', 'unknown')} failed: {result.get('error', 'Unknown error')}"
+                )
 
         return search_results
 
@@ -437,7 +498,7 @@ class DeepResearcherTool(Tool):
         else:
             raise ValueError(f"LLM {model_name} returned empty response")
 
-    def _merge_search_results(self, search_results: List[Dict[str, Any]]) -> str:
+    def _merge_search_results(self, search_results: list[dict[str, Any]]) -> str:
         """实现 `_merge_search_results` 的业务逻辑。"""
         if not search_results:
             return "No search results available."
@@ -463,11 +524,13 @@ class DeepResearcherTool(Tool):
         task: str,
         report_content: str,
         answer_found: bool,
-        evaluation: Optional[CompletenessEvaluation]
+        evaluation: CompletenessEvaluation | None,
     ) -> str:
         """实现 `_generate_summary` 的业务逻辑。"""
         answer_status = f"Answer Found: {'Yes' if answer_found else 'No'}"
-        evaluation_text = f"\n\nEvaluation: {evaluation.reasoning}" if evaluation else ""
+        evaluation_text = (
+            f"\n\nEvaluation: {evaluation.reasoning}" if evaluation else ""
+        )
 
         summary_prompt = dedent(f"""Based on the research report below, generate a comprehensive summary.
 
@@ -490,23 +553,31 @@ class DeepResearcherTool(Tool):
         """)
 
         summary_messages = [
-            SystemMessage(content="You are an expert at summarizing research reports. Generate clear, informative summaries that MUST explicitly state whether answers were found in the first line using 'Answer Found: Yes' or 'Answer Found: No'."),
-            HumanMessage(content=summary_prompt)
+            SystemMessage(
+                content="You are an expert at summarizing research reports. Generate clear, informative summaries that MUST explicitly state whether answers were found in the first line using 'Answer Found: Yes' or 'Answer Found: No'."
+            ),
+            HumanMessage(content=summary_prompt),
         ]
 
         summary_response = await model_manager(
             model=self.model_name,
             messages=summary_messages,
-            response_format=ResearchSummary
+            response_format=ResearchSummary,
         )
 
         # 说明相关实现细节。
-        if summary_response.extra and hasattr(summary_response.extra, 'parsed_model') and summary_response.extra.parsed_model:
+        if (
+            summary_response.extra
+            and hasattr(summary_response.extra, "parsed_model")
+            and summary_response.extra.parsed_model
+        ):
             research_summary = summary_response.extra.parsed_model
             summary_text = research_summary.summary
             # 校验输入与当前状态。
             if research_summary.answer_found != answer_found:
-                logger.warning(f"Answer found mismatch: model says {research_summary.answer_found}, actual is {answer_found}")
+                logger.warning(
+                    f"Answer found mismatch: model says {research_summary.answer_found}, actual is {answer_found}"
+                )
         else:
             summary_text = summary_response.message.strip()
 
@@ -518,7 +589,9 @@ class DeepResearcherTool(Tool):
 
         return final_summary
 
-    async def _evaluate_completeness(self, task: str, summary: str) -> CompletenessEvaluation:
+    async def _evaluate_completeness(
+        self, task: str, summary: str
+    ) -> CompletenessEvaluation:
         """实现 `_evaluate_completeness` 的业务逻辑。"""
         prompt = dedent(f"""Evaluate if the following summary provides a complete answer to the research task.
 
@@ -540,16 +613,25 @@ class DeepResearcherTool(Tool):
             response = await model_manager(
                 model=self.model_name,
                 messages=[message],
-                response_format=CompletenessEvaluation
+                response_format=CompletenessEvaluation,
             )
 
-            if response and response.extra and hasattr(response.extra, 'parsed_model') and response.extra.parsed_model:
+            if (
+                response
+                and response.extra
+                and hasattr(response.extra, "parsed_model")
+                and response.extra.parsed_model
+            ):
                 evaluation = response.extra.parsed_model
-                logger.info(f"| Evaluation: is_complete={evaluation.is_complete}, reasoning={evaluation.reasoning[:100]}...")
+                logger.info(
+                    f"| Evaluation: is_complete={evaluation.is_complete}, reasoning={evaluation.reasoning[:100]}..."
+                )
                 return evaluation
 
             # 处理异常情况。
-            logger.warning("Failed to parse response_format, falling back to text parsing")
+            logger.warning(
+                "Failed to parse response_format, falling back to text parsing"
+            )
             is_complete = False
             reasoning = "Failed to parse structured response."
             if response and response.message.strip():
@@ -564,8 +646,12 @@ class DeepResearcherTool(Tool):
             # 执行回退或重试逻辑。
             task_lower = task.lower()
             summary_lower = summary.lower()
-            key_terms = [term for term in task_lower.split() if len(term) > 3]  # 说明相关实现细节。
+            key_terms = [
+                term for term in task_lower.split() if len(term) > 3
+            ]  # 说明相关实现细节。
 
-            is_complete = len(summary) > 500 and any(term in summary_lower for term in key_terms)
+            is_complete = len(summary) > 500 and any(
+                term in summary_lower for term in key_terms
+            )
             reasoning = f"Fallback heuristic evaluation: summary length={len(summary)}, keyword match={'yes' if is_complete else 'no'}"
             return CompletenessEvaluation(is_complete=is_complete, reasoning=reasoning)

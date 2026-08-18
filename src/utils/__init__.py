@@ -4,6 +4,14 @@ from importlib import import_module
 from typing import Any
 
 _EXPORTS: dict[str, tuple[str, str]] = {
+    "open_binary_file": (".async_file", "open_binary_file"),
+    "read_json_file": (".async_file", "read_json_file"),
+    "read_lines_file": (".async_file", "read_lines_file"),
+    "read_text_file": (".async_file", "read_text_file"),
+    "write_json_file": (".async_file", "write_json_file"),
+    "write_lines_file": (".async_file", "write_lines_file"),
+    "write_pickle_file": (".async_file", "write_pickle_file"),
+    "write_text_file": (".async_file", "write_text_file"),
     "get_project_root": (".path_utils", "get_project_root"),
     "assemble_project_path": (".path_utils", "assemble_project_path"),
     "Singleton": (".singleton", "Singleton"),

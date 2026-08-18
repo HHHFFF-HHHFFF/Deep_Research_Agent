@@ -1,0 +1,7 @@
+target-version = "py310"
+line-length = 88
+
+[lint]
+# 模型、工具与文件格式适配器需要在最外层把不可枚举的第三方异常转换为稳定结果。
+# 这里仅允许捕获 Exception，不允许捕获 KeyboardInterrupt、SystemExit 等 BaseException。
+ignore = ["BLE001"]

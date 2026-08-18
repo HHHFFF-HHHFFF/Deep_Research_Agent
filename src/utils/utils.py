@@ -20,19 +20,22 @@ import base64
 import importlib.metadata
 import importlib.util
 import inspect
-import mimetypes
 import json
-import json5
 import keyword
+import mimetypes
 import os
 import re
 import types
+from collections.abc import Awaitable, Iterable
 from functools import lru_cache
 from pathlib import Path
 from textwrap import dedent
-from typing import Any, Dict, Tuple, Optional, Union, Iterable, Awaitable, List, TypeVar
+from typing import Any, TypeVar
+
+import json5
 
 T = TypeVar("T")
+
 
 @lru_cache
 def _is_package_available(package_name: str) -> bool:
@@ -49,7 +52,9 @@ def escape_code_brackets(text: str) -> str:
     def replace_bracketed_content(match):
         content = match.group(1)
         cleaned = re.sub(
-            r"bold|red|green|blue|yellow|magenta|cyan|white|black|italic|dim|\s|#[0-9a-fA-F]{6}", "", content
+            r"bold|red|green|blue|yellow|magenta|cyan|white|black|italic|dim|\s|#[0-9a-fA-F]{6}",
+            "",
+            content,
         )
         return f"\\[{content}\\]" if cleaned.strip() else f"[{content}]"
 
@@ -64,7 +69,9 @@ def make_json_serializable(obj: Any) -> Any:
         # 转换并规范化数据。
         if isinstance(obj, str):
             try:
-                if (obj.startswith("{") and obj.endswith("}")) or (obj.startswith("[") and obj.endswith("]")):
+                if (obj.startswith("{") and obj.endswith("}")) or (
+                    obj.startswith("[") and obj.endswith("]")
+                ):
                     parsed = json.loads(obj)
                     return make_json_serializable(parsed)
             except json.JSONDecodeError:
@@ -76,13 +83,16 @@ def make_json_serializable(obj: Any) -> Any:
         return {str(k): make_json_serializable(v) for k, v in obj.items()}
     elif hasattr(obj, "__dict__"):
         # 转换并规范化数据。
-        return {"_type": obj.__class__.__name__, **{k: make_json_serializable(v) for k, v in obj.__dict__.items()}}
+        return {
+            "_type": obj.__class__.__name__,
+            **{k: make_json_serializable(v) for k, v in obj.__dict__.items()},
+        }
     else:
         # 转换并规范化数据。
         return str(obj)
 
 
-def parse_json_blob(json_blob: str) -> Tuple[Dict[str, str], str]:
+def parse_json_blob(json_blob: str) -> tuple[dict[str, str], str]:
     """解析与 `parse_json_blob` 对应的数据或状态。"""
     try:
         if "Calling tools:" in json_blob:
@@ -90,10 +100,10 @@ def parse_json_blob(json_blob: str) -> Tuple[Dict[str, str], str]:
 
         first_accolade_index = json_blob.find("{")
         last_accolade_index = [a.start() for a in list(re.finditer("}", json_blob))][-1]
-        json_data = json_blob[first_accolade_index: last_accolade_index + 1]
+        json_data = json_blob[first_accolade_index : last_accolade_index + 1]
 
         json_data = json5.loads(json_data, strict=False)
-        json_data = json_data['function']
+        json_data = json_data["function"]
 
         return json_data, json_blob[:first_accolade_index]
     except IndexError:
@@ -111,7 +121,7 @@ def parse_json_blob(json_blob: str) -> Tuple[Dict[str, str], str]:
         )
 
 
-def extract_code_from_text(text: str) -> Optional[str]:
+def extract_code_from_text(text: str) -> str | None:
     """提取与 `extract_code_from_text` 对应的数据或状态。"""
     pattern = r"<code>(.*?)</code>"
     matches = re.findall(pattern, text, re.DOTALL)
@@ -166,16 +176,16 @@ async def gather_with_concurrency(
     coros: Iterable[Awaitable[T]],
     max_concurrency: int = 10,
     return_exceptions: bool = False,
-) -> List[Union[T, BaseException]]:
+) -> list[T | Exception]:
     """实现 `gather_with_concurrency` 的业务逻辑。"""
     sem = asyncio.Semaphore(max_concurrency)
 
-    async def _runner(coro: Awaitable[T]) -> Union[T, BaseException]:
+    async def _runner(coro: Awaitable[T]) -> T | Exception:
         async with sem:
             if return_exceptions:
                 try:
                     return await coro
-                except BaseException as e:  # noqa: BLE001
+                except Exception as e:
                     return e
             else:
                 return await coro
@@ -217,8 +227,12 @@ def is_same_method(method1, method2):
         source2 = get_method_source(method2)
 
         # 移除相关数据或组件。
-        source1 = "\n".join(line for line in source1.split("\n") if not line.strip().startswith("@"))
-        source2 = "\n".join(line for line in source2.split("\n") if not line.strip().startswith("@"))
+        source1 = "\n".join(
+            line for line in source1.split("\n") if not line.strip().startswith("@")
+        )
+        source2 = "\n".join(
+            line for line in source2.split("\n") if not line.strip().startswith("@")
+        )
 
         return source1 == source2
     except (TypeError, OSError):
@@ -255,7 +269,9 @@ def instance_to_source(instance, base_cls=None):
         for name, value in cls.__dict__.items()
         if not name.startswith("__")
         and not callable(value)
-        and not (base_cls and hasattr(base_cls, name) and getattr(base_cls, name) == value)
+        and not (
+            base_cls and hasattr(base_cls, name) and getattr(base_cls, name) == value
+        )
     }
 
     for name, value in class_attrs.items():
@@ -267,7 +283,7 @@ def instance_to_source(instance, base_cls=None):
             else:
                 class_lines.append(f"    {name} = {json.dumps(value)}")
         else:
-            class_lines.append(f"    {name} = {repr(value)}")
+            class_lines.append(f"    {name} = {value!r}")
 
     if class_attrs:
         class_lines.append("")
@@ -294,7 +310,9 @@ def instance_to_source(instance, base_cls=None):
         first_line = method_lines[0]
         indent = len(first_line) - len(first_line.lstrip())
         method_lines = [line[indent:] for line in method_lines]
-        method_source = "\n".join(["    " + line if line.strip() else line for line in method_lines])
+        method_source = "\n".join(
+            ["    " + line if line.strip() else line for line in method_lines]
+        )
         class_lines.append(method_source)
         class_lines.append("")
 
@@ -348,9 +366,16 @@ def get_source(obj) -> str:
 
         tree = ast.parse(all_cells)
         for node in ast.walk(tree):
-            if isinstance(node, (ast.ClassDef, ast.FunctionDef)) and node.name == obj.__name__:
-                return dedent("\n".join(all_cells.split("\n")[node.lineno - 1 : node.end_lineno])).strip()
-        raise ValueError(f"Could not find source code for {obj.__name__} in IPython history")
+            if (
+                isinstance(node, (ast.ClassDef, ast.FunctionDef))
+                and node.name == obj.__name__
+            ):
+                return dedent(
+                    "\n".join(all_cells.split("\n")[node.lineno - 1 : node.end_lineno])
+                ).strip()
+        raise ValueError(
+            f"Could not find source code for {obj.__name__} in IPython history"
+        )
     except ImportError:
         # 处理异常情况。
         raise inspect_error
@@ -364,15 +389,17 @@ def encode_file_base64(file_path: str) -> str:
         data = f.read()
     return base64.b64encode(data).decode("utf-8")
 
+
 def decode_file_base64(data_base64: str) -> bytes:
     return base64.b64decode(data_base64)
+
 
 def make_file_url(file_path: str) -> str:
     mime_type, _ = mimetypes.guess_type(file_path)
     return f"data:{mime_type.lower()};base64,{encode_file_base64(file_path)}"
 
 
-def make_init_file(folder: Union[str, Path]):
+def make_init_file(folder: str | Path):
     os.makedirs(folder, exist_ok=True)
     # 创建所需对象。
     with open(os.path.join(folder, "__init__.py"), "w"):
@@ -380,4 +407,8 @@ def make_init_file(folder: Union[str, Path]):
 
 
 def is_valid_name(name: str) -> bool:
-    return name.isidentifier() and not keyword.iskeyword(name) if isinstance(name, str) else False
+    return (
+        name.isidentifier() and not keyword.iskeyword(name)
+        if isinstance(name, str)
+        else False
+    )

@@ -1,14 +1,17 @@
 """提供数据类型相关实现。"""
 
-from typing import List, Dict, Tuple, Optional, Any, TYPE_CHECKING
-from pydantic import BaseModel, Field, ConfigDict
+from typing import TYPE_CHECKING, Any
+
+from pydantic import BaseModel, ConfigDict, Field
 
 if TYPE_CHECKING:
     from src.session import SessionContext
-from typing import List, Any, Optional, Union, Dict, Set
-from jinja2 import Environment, Template, meta
 from collections import defaultdict
 from functools import partial
+from typing import Union
+
+from jinja2 import Environment, Template, TemplateError, meta
+
 
 class Variable(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
@@ -16,16 +19,34 @@ class Variable(BaseModel):
     name: str = Field(description="The name of the variable.")
     type: str = Field(description="The type of the variable.")
     description: str = Field(description="The description of the variable.")
-    require_grad: bool = Field(default=False, description="Whether the variable requires gradient.")
-    template: Optional[str] = Field(default=None, description="The template of the variable.")
-    variables: Optional[Union[Dict[str, 'Variable'], 'Variable', Any]] = Field(default=None, description="The elements of the variable. Can be a dict (keyed by name), single Variable, or direct value.")
+    require_grad: bool = Field(
+        default=False, description="Whether the variable requires gradient."
+    )
+    template: str | None = Field(
+        default=None, description="The template of the variable."
+    )
+    variables: Union[dict[str, "Variable"], "Variable", Any] | None = Field(
+        default=None,
+        description="The elements of the variable. Can be a dict (keyed by name), single Variable, or direct value.",
+    )
 
     # 说明相关实现细节。
-    gradients: Set['Variable'] = Field(default_factory=set, description="Text gradients for this variable.")
-    gradients_context: Dict['Variable', str] = Field(default_factory=lambda: defaultdict(lambda: None), description="Context for gradients.")
-    grad_fn: Optional[Any] = Field(default=None, description="Gradient function for backward pass.")
-    predecessors: Set['Variable'] = Field(default_factory=set, description="Predecessor variables in computation graph.")
-    reduce_meta: List[Dict] = Field(default_factory=list, description="Metadata for gradient reduction.")
+    gradients: set["Variable"] = Field(
+        default_factory=set, description="Text gradients for this variable."
+    )
+    gradients_context: dict["Variable", str] = Field(
+        default_factory=lambda: defaultdict(lambda: None),
+        description="Context for gradients.",
+    )
+    grad_fn: Any | None = Field(
+        default=None, description="Gradient function for backward pass."
+    )
+    predecessors: set["Variable"] = Field(
+        default_factory=set, description="Predecessor variables in computation graph."
+    )
+    reduce_meta: list[dict] = Field(
+        default_factory=list, description="Metadata for gradient reduction."
+    )
 
     def __hash__(self):
         return id(self)
@@ -34,13 +55,15 @@ class Variable(BaseModel):
         return id(self) == id(other)
 
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'Variable':
+    def from_dict(cls, data: dict[str, Any]) -> "Variable":
         """实现 `from_dict` 的业务逻辑。"""
         subvars = data.get("variables")
         if isinstance(subvars, dict):
             # 转换并规范化数据。
-            subvars = {k: cls.from_dict(v) if isinstance(v, dict) and "name" in v else v
-                      for k, v in subvars.items()}
+            subvars = {
+                k: cls.from_dict(v) if isinstance(v, dict) and "name" in v else v
+                for k, v in subvars.items()
+            }
         elif subvars is not None and not isinstance(subvars, dict):
             # 说明相关实现细节。
             pass
@@ -53,7 +76,7 @@ class Variable(BaseModel):
             variables=subvars,
         )
 
-    def render(self, modules: Dict[str, Any]) -> str:
+    def render(self, modules: dict[str, Any]) -> str:
         """实现 `render` 的业务逻辑。"""
         if self.template is None:
             return ""
@@ -71,7 +94,7 @@ class Variable(BaseModel):
                     try:
                         temp_template = Template(val)
                         ctx[var] = temp_template.render(**ctx)
-                    except:
+                    except (TemplateError, TypeError, ValueError):
                         # 处理异常情况。
                         ctx[var] = val
                 else:
@@ -79,9 +102,9 @@ class Variable(BaseModel):
 
         return Template(self.template).render(**ctx)
 
-    def get_modules(self, context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    def get_modules(self, context: dict[str, Any] | None = None) -> dict[str, Any]:
         """获取与 `get_modules` 对应的数据或状态。"""
-        result: Dict[str, Any] = {}
+        result: dict[str, Any] = {}
         ctx = dict(context or {})
 
         # 创建所需对象。
@@ -107,7 +130,7 @@ class Variable(BaseModel):
                 rendered = Template(self.template).render(**ctx)
                 result[self.name] = rendered
                 ctx[self.name] = rendered
-            except Exception as e:
+            except Exception:
                 # 处理异常情况。
                 result[self.name] = self.template
                 ctx[self.name] = self.template
@@ -120,7 +143,13 @@ class Variable(BaseModel):
             # 组装并返回结果。
             if isinstance(self.variables, dict):
                 # 转换并规范化数据。
-                return " ".join([child.get_value() for child in self.variables.values() if isinstance(child, Variable)])
+                return " ".join(
+                    [
+                        child.get_value()
+                        for child in self.variables.values()
+                        if isinstance(child, Variable)
+                    ]
+                )
             elif isinstance(self.variables, Variable):
                 return self.variables.get_value()
             elif self.variables is not None:
@@ -149,14 +178,16 @@ class Variable(BaseModel):
                 require_grad=(self.require_grad or to_add.require_grad),
                 template="{{var1}} {{var2}}",  # 说明相关实现细节。
                 variables=[self, to_add],
-                predecessors={self, to_add}
+                predecessors={self, to_add},
             )
             # 更新相关状态。
-            result.set_grad_fn(partial(
-                self._backward_idempotent,
-                variables=[self, to_add],
-                summation=result,
-            ))
+            result.set_grad_fn(
+                partial(
+                    self._backward_idempotent,
+                    variables=[self, to_add],
+                    summation=result,
+                )
+            )
             return result
         else:
             return to_add.__add__(self)
@@ -211,7 +242,9 @@ class Variable(BaseModel):
                 if v.get_grad_fn() is not None:
                     v.grad_fn(backward_engine=engine)
 
-    def _check_and_reduce_gradients(self, variable: 'Variable', backward_engine=None) -> Set['Variable']:
+    def _check_and_reduce_gradients(
+        self, variable: "Variable", backward_engine=None
+    ) -> set["Variable"]:
         """实现 `_check_and_reduce_gradients` 的业务逻辑。"""
         if variable.reduce_meta == []:
             return variable.gradients
@@ -236,7 +269,9 @@ class Variable(BaseModel):
 
         return new_gradients
 
-    def _backward_idempotent(self, variables: List['Variable'], summation: 'Variable', backward_engine=None):
+    def _backward_idempotent(
+        self, variables: list["Variable"], summation: "Variable", backward_engine=None
+    ):
         """实现 `_backward_idempotent` 的业务逻辑。"""
         summation_gradients = summation.get_gradient_text()
         for variable in variables:
@@ -250,7 +285,7 @@ class Variable(BaseModel):
                 type="gradient",
                 description=f"feedback to {variable.description}",
                 require_grad=False,
-                variables=variable_gradient_value
+                variables=variable_gradient_value,
             )
             variable.gradients.add(var_gradients)
 
@@ -263,7 +298,9 @@ class Variable(BaseModel):
         try:
             from graphviz import Digraph
         except ImportError:
-            raise ImportError("Please install graphviz to visualize the computation graphs.")
+            raise ImportError(
+                "Please install graphviz to visualize the computation graphs."
+            )
 
         def wrap_text(text, width=40):
             words = text.split()
@@ -296,14 +333,14 @@ class Variable(BaseModel):
 
         build_topo(self)
 
-        graph = Digraph(comment=f'Computation Graph starting from {self.description}')
-        graph.attr(rankdir='TB')
-        graph.attr(ranksep='0.2')
-        graph.attr(bgcolor='lightgrey')
-        graph.attr(fontsize='7.5')
+        graph = Digraph(comment=f"Computation Graph starting from {self.description}")
+        graph.attr(rankdir="TB")
+        graph.attr(ranksep="0.2")
+        graph.attr(bgcolor="lightgrey")
+        graph.attr(fontsize="7.5")
 
         for v in reversed(topo):
-            label_color = 'darkblue'
+            label_color = "darkblue"
 
             node_label = (
                 f"<b><font color='{label_color}'>Name: </font></b> {wrap_and_escape(v.name)}"
@@ -320,14 +357,14 @@ class Variable(BaseModel):
             graph.node(
                 str(id(v)),
                 label=f"<{node_label}>",
-                shape='rectangle',
-                style='filled',
-                fillcolor='lavender',
-                fontsize='8',
+                shape="rectangle",
+                style="filled",
+                fillcolor="lavender",
+                fontsize="8",
                 fontname="Arial",
-                margin='0.1',
-                pad='0.1',
-                width='1.2',
+                margin="0.1",
+                pad="0.1",
+                width="1.2",
             )
 
             for predecessor in v.predecessors:
@@ -335,7 +372,7 @@ class Variable(BaseModel):
 
         return graph
 
-    def get_all_variables(self) -> List['Variable']:
+    def get_all_variables(self) -> list["Variable"]:
         """获取与 `get_all_variables` 对应的数据或状态。"""
         all_vars = [self]
 
@@ -349,9 +386,9 @@ class Variable(BaseModel):
 
         return all_vars
 
-    def get_trainable_variables(self) -> Dict[str, 'Variable']:
+    def get_trainable_variables(self) -> dict[str, "Variable"]:
         """获取与 `get_trainable_variables` 对应的数据或状态。"""
-        trainable_vars: Dict[str, 'Variable'] = {}
+        trainable_vars: dict[str, Variable] = {}
 
         # 校验输入与当前状态。
         if isinstance(self.variables, dict) and len(self.variables) > 0:
@@ -359,10 +396,8 @@ class Variable(BaseModel):
             for key, child in self.variables.items():
                 if isinstance(child, Variable) and child.require_grad:
                     trainable_vars[key] = child
-        elif not isinstance(self.variables, (dict, Variable)):
-            # 组装并返回结果。
-            if self.require_grad:
-                trainable_vars[self.name] = self
+        elif not isinstance(self.variables, (dict, Variable)) and self.require_grad:
+            trainable_vars[self.name] = self
 
         return trainable_vars
 
@@ -372,14 +407,15 @@ class Optimizer(BaseModel):
 
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="allow")
 
-    def __init__(self,
-                 workdir: str,
-                 model_name: Optional[str] = None,
-                 prompt_name: Optional[str] = None,
-                 memory_name: Optional[str] = None,
-                 max_steps: int = 3,
-                 **kwargs
-                 ):
+    def __init__(
+        self,
+        workdir: str,
+        model_name: str | None = None,
+        prompt_name: str | None = None,
+        memory_name: str | None = None,
+        max_steps: int = 3,
+        **kwargs,
+    ):
         super().__init__(**kwargs)
 
         # 更新相关状态。
@@ -400,22 +436,30 @@ class Optimizer(BaseModel):
 
     async def get_trainable_variables(self):
         """获取与 `get_trainable_variables` 对应的数据或状态。"""
-        raise NotImplementedError(f"``get_trainable_variables`` function for {type(self).__name__} is not implemented!")
+        raise NotImplementedError(
+            f"``get_trainable_variables`` function for {type(self).__name__} is not implemented!"
+        )
 
-    async def set_trainable_variables(self, variables: List['Variable']):
+    async def set_trainable_variables(self, variables: list["Variable"]):
         """设置与 `set_trainable_variables` 对应的数据或状态。"""
-        raise NotImplementedError(f"``set_trainable_variables`` function for {type(self).__name__} is not implemented!")
+        raise NotImplementedError(
+            f"``set_trainable_variables`` function for {type(self).__name__} is not implemented!"
+        )
 
     async def optimize(
         self,
         task: str,
-        files: Optional[List[str]] = None,
+        files: list[str] | None = None,
         ctx: "SessionContext" = None,
-        **kwargs
+        **kwargs,
     ):
         """实现 `optimize` 的业务逻辑。"""
-        raise NotImplementedError(f"``optimize`` function for {type(self).__name__} is not implemented!")
+        raise NotImplementedError(
+            f"``optimize`` function for {type(self).__name__} is not implemented!"
+        )
 
     def close(self):
         """关闭资源并完成清理。"""
-        raise NotImplementedError(f"``close`` function for {type(self).__name__} is not implemented!")
+        raise NotImplementedError(
+            f"``close`` function for {type(self).__name__} is not implemented!"
+        )

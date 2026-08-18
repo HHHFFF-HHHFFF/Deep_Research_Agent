@@ -1,23 +1,20 @@
-from typing import Any, Dict, List, Optional
-from pydantic import Field
-from tenacity import retry, stop_after_attempt, wait_exponential, RetryError
 import asyncio
+from typing import Any
 
-from src.tool.default_tools.web_fetcher import WebFetcherTool
-from src.tool.default_tools.search import (
-    FirecrawlSearch,
-    SearchItem,
-    BraveSearch,
-    BingSearch,
-    GoogleSearch,
-    DDGSSearch
-)
+from pydantic import Field
+from tenacity import RetryError, retry, stop_after_attempt, wait_exponential
+
 from src.logger import logger
-from src.tool.types import Tool, ToolResponse, ToolExtra
-from src.model import model_manager
 from src.message.types import HumanMessage, SystemMessage
-from src.utils import dedent
+from src.model import model_manager
 from src.registry import TOOL
+from src.tool.default_tools.search import (
+    DDGSSearch,
+    SearchItem,
+)
+from src.tool.default_tools.web_fetcher import WebFetcherTool
+from src.tool.types import Tool, ToolExtra, ToolResponse
+from src.utils import dedent
 
 _WEB_SEARCHER_DESCRIPTION = """Search the web for real-time information about any topic.
 This tool performs deep research by:
@@ -38,29 +35,51 @@ Args:
 Example: {"name": "web_searcher", "args": {"query": "What is the capital of France?", "num_results": 5, "lang": "en", "country": "us", "filter_year": 2025}}.
 """
 
+
 @TOOL.register_module(force=True)
 class WebSearcherTool(Tool):
     """定义 `WebSearcherTool`，封装相关数据与行为。"""
 
     name: str = "web_searcher"
     description: str = _WEB_SEARCHER_DESCRIPTION
-    metadata: Dict[str, Any] = Field(default={}, description="The metadata of the tool")
-    require_grad: bool = Field(default=False, description="Whether the tool requires gradients")
+    metadata: dict[str, Any] = Field(default={}, description="The metadata of the tool")
+    require_grad: bool = Field(
+        default=False, description="Whether the tool requires gradients"
+    )
 
-    max_length: int = Field(default=4096, description="The maximum length of the search results")
+    max_length: int = Field(
+        default=4096, description="The maximum length of the search results"
+    )
     retry_delay: int = Field(default=10, description="The delay between retries")
     max_retries: int = Field(default=3, description="The maximum number of retries")
     lang: str = Field(default="en", description="The language to use for the search")
     country: str = Field(default="us", description="The country to use for the search")
-    num_results: int = Field(default=5, description="The number of search results to return")
-    fetch_content: bool = Field(default=True, description="Whether to fetch content from the search results")
-    summarize_pages: bool = Field(default=True, description="Whether to summarize each page based on the query")
-    merge_summaries: bool = Field(default=True, description="Whether to merge all summaries into a final report")
-    model_name: str = Field(default="openrouter/gemini-3-flash-preview", description="The model to use for summarization")
-    search_tools: Dict[str, Any] = Field(default=None, description="The search tools to use")
-    content_fetcher: WebFetcherTool = Field(default=None, description="The content fetcher to use")
+    num_results: int = Field(
+        default=5, description="The number of search results to return"
+    )
+    fetch_content: bool = Field(
+        default=True, description="Whether to fetch content from the search results"
+    )
+    summarize_pages: bool = Field(
+        default=True, description="Whether to summarize each page based on the query"
+    )
+    merge_summaries: bool = Field(
+        default=True, description="Whether to merge all summaries into a final report"
+    )
+    model_name: str = Field(
+        default="openrouter/gemini-3-flash-preview",
+        description="The model to use for summarization",
+    )
+    search_tools: dict[str, Any] = Field(
+        default=None, description="The search tools to use"
+    )
+    content_fetcher: WebFetcherTool = Field(
+        default=None, description="The content fetcher to use"
+    )
 
-    def __init__(self, model_name: Optional[str] = None, require_grad: bool = False, **kwargs):
+    def __init__(
+        self, model_name: str | None = None, require_grad: bool = False, **kwargs
+    ):
         """初始化实例。"""
         super().__init__(require_grad=require_grad, **kwargs)
         if model_name is not None:
@@ -76,11 +95,11 @@ class WebSearcherTool(Tool):
     async def __call__(
         self,
         query: str,
-        num_results: Optional[int] = 5,
-        lang: Optional[str] = "en",
-        country: Optional[str] = "us",
-        filter_year: Optional[int] = None,
-        **kwargs
+        num_results: int | None = 5,
+        lang: str | None = "en",
+        country: str | None = "us",
+        filter_year: int | None = None,
+        **kwargs,
     ) -> ToolResponse:
         """执行组件调用并返回结果。"""
         try:
@@ -98,13 +117,17 @@ class WebSearcherTool(Tool):
                     break
 
                 if retry_count < self.max_retries:
-                    logger.warning(f"| ❌ All search tools failed. Waiting {self.retry_delay} seconds before retry {retry_count + 1}/{self.max_retries}...")
+                    logger.warning(
+                        f"| ❌ All search tools failed. Waiting {self.retry_delay} seconds before retry {retry_count + 1}/{self.max_retries}..."
+                    )
                     await asyncio.sleep(self.retry_delay)
                 else:
-                    logger.error(f"| ❌ All search tools failed after {self.max_retries} retries. Giving up.")
+                    logger.error(
+                        f"| ❌ All search tools failed after {self.max_retries} retries. Giving up."
+                    )
                     return ToolResponse(
                         success=False,
-                        message=f"Error: All search tools failed to return results after multiple retries.",
+                        message="Error: All search tools failed to return results after multiple retries.",
                         extra=ToolExtra(
                             data={
                                 "query": query,
@@ -114,9 +137,9 @@ class WebSearcherTool(Tool):
                                 "language": lang,
                                 "country": country,
                                 "search_tools_used": [],
-                                "retries": self.max_retries
+                                "retries": self.max_retries,
                             }
-                        )
+                        ),
                     )
 
             if not results:
@@ -130,24 +153,30 @@ class WebSearcherTool(Tool):
                             "results": [],
                             "total_results": 0,
                             "language": lang,
-                            "country": country
+                            "country": country,
                         }
-                    )
+                    ),
                 )
 
-            logger.info(f"| ✅ Found {len(results)} search results from multiple engines")
+            logger.info(
+                f"| ✅ Found {len(results)} search results from multiple engines"
+            )
 
             # 检索所需信息。
             if self.fetch_content:
                 logger.info("| 📥 Fetching content from web pages...")
                 results = await self._fetch_content_for_results(results)
-                logger.info(f"| ✅ Fetched content from {len([r for r in results if r.get('raw_content')])} pages")
+                logger.info(
+                    f"| ✅ Fetched content from {len([r for r in results if r.get('raw_content')])} pages"
+                )
 
             # 检索所需信息。
             if self.summarize_pages:
                 logger.info("| 📝 Summarizing each page based on the query...")
                 results = await self._summarize_results(results, query)
-                logger.info(f"| ✅ Summarized {len([r for r in results if r.get('summary')])} pages")
+                logger.info(
+                    f"| ✅ Summarized {len([r for r in results if r.get('summary')])} pages"
+                )
 
             # 说明相关实现细节。
             merged_summary = None
@@ -157,7 +186,7 @@ class WebSearcherTool(Tool):
                 logger.info("| ✅ Generated merged summary with citations")
 
             # 组装并返回结果。
-            search_engines_used = list(set(r.get("source", "") for r in results))
+            search_engines_used = list({r.get("source", "") for r in results})
 
             # 组装并返回结果。
             if merged_summary:
@@ -188,19 +217,16 @@ class WebSearcherTool(Tool):
                         "search_engines_used": search_engines_used,
                         "merged_summary": merged_summary,
                     }
-                )
+                ),
             )
 
         except Exception as e:
             logger.error(f"| ❌ Error in web search: {e}")
-            return ToolResponse(
-                success=False,
-                message=f"Error during web search: {e}"
-            )
+            return ToolResponse(success=False, message=f"Error during web search: {e}")
 
     async def _try_all_engines(
-        self, query: str, num_results: int, search_params: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
+        self, query: str, num_results: int, search_params: dict[str, Any]
+    ) -> list[dict[str, Any]]:
         """实现 `_try_all_engines` 的业务逻辑。"""
         tool_order = self._get_tool_order()
 
@@ -224,7 +250,7 @@ class WebSearcherTool(Tool):
                     {
                         "position": i + 1,
                         "url": item.url,
-                        "title": item.title or f"Result {i+1}",
+                        "title": item.title or f"Result {i + 1}",
                         "description": item.description or "",
                         "source": tool_name,
                         "raw_content": None,
@@ -232,14 +258,18 @@ class WebSearcherTool(Tool):
                     }
                     for i, item in enumerate(search_items)
                 ]
-                logger.info(f"| ✅ {tool_name.capitalize()} returned {len(results)} results")
+                logger.info(
+                    f"| ✅ {tool_name.capitalize()} returned {len(results)} results"
+                )
                 return results
             except (ValueError, RetryError, Exception) as e:
                 error_msg = str(e)
-                if isinstance(e, RetryError):
-                    # 处理异常情况。
-                    if e.last_attempt and e.last_attempt.exception():
-                        error_msg = str(e.last_attempt.exception())
+                if (
+                    isinstance(e, RetryError)
+                    and e.last_attempt
+                    and e.last_attempt.exception()
+                ):
+                    error_msg = str(e.last_attempt.exception())
                 logger.warning(f"| ❌ Search tool {tool_name} failed: {error_msg}")
                 return None
 
@@ -256,7 +286,9 @@ class WebSearcherTool(Tool):
             tool_name = tool_order[i]
             if isinstance(result, Exception):
                 failed_tools.append(tool_name)
-                logger.error(f"| ❌ Search tool {tool_name} raised exception: {str(result)}")
+                logger.error(
+                    f"| ❌ Search tool {tool_name} raised exception: {result!s}"
+                )
             elif result is None:
                 failed_tools.append(tool_name)
             else:
@@ -265,7 +297,9 @@ class WebSearcherTool(Tool):
 
         # 说明相关实现细节。
         if successful_tools:
-            logger.info(f"| ✅ Successfully retrieved results from: {', '.join(successful_tools)}")
+            logger.info(
+                f"| ✅ Successfully retrieved results from: {', '.join(successful_tools)}"
+            )
         if failed_tools:
             logger.warning(f"| ⚠️ Failed search tools: {', '.join(failed_tools)}")
 
@@ -285,12 +319,14 @@ class WebSearcherTool(Tool):
         for i, result in enumerate(unique_results, 1):
             result["position"] = i
 
-        logger.info(f"| 📊 Merged {len(unique_results)} unique results from {len(successful_tools)} search engine(s)")
+        logger.info(
+            f"| 📊 Merged {len(unique_results)} unique results from {len(successful_tools)} search engine(s)"
+        )
         return unique_results
 
     async def _fetch_content_for_results(
-            self, results: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
+        self, results: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
         """实现 `_fetch_content_for_results` 的业务逻辑。"""
         if not results:
             return []
@@ -299,14 +335,16 @@ class WebSearcherTool(Tool):
         # 处理异常情况。
         fetched_results = await asyncio.gather(
             *[self._fetch_single_result_content(result) for result in results],
-            return_exceptions=True
+            return_exceptions=True,
         )
 
         # 处理异常情况。
         final_results = []
         for i, result in enumerate(fetched_results):
             if isinstance(result, Exception):
-                logger.warning(f"| ❌ Exception fetching content for result {i+1}: {result}")
+                logger.warning(
+                    f"| ❌ Exception fetching content for result {i + 1}: {result}"
+                )
                 # 组装并返回结果。
                 if i < len(results):
                     results[i]["raw_content"] = None
@@ -316,7 +354,9 @@ class WebSearcherTool(Tool):
 
         return final_results
 
-    async def _fetch_single_result_content(self, result: Dict[str, Any]) -> Dict[str, Any]:
+    async def _fetch_single_result_content(
+        self, result: dict[str, Any]
+    ) -> dict[str, Any]:
         """实现 `_fetch_single_result_content` 的业务逻辑。"""
         url = result.get("url")
         if url:
@@ -324,8 +364,7 @@ class WebSearcherTool(Tool):
                 # 说明相关实现细节。
                 # 说明相关实现细节。
                 response = await asyncio.wait_for(
-                    self.content_fetcher(url=url),
-                    timeout=20.0
+                    self.content_fetcher(url=url), timeout=20.0
                 )
                 if response.success and response.message:
                     content = response.message
@@ -335,19 +374,23 @@ class WebSearcherTool(Tool):
                 else:
                     result["raw_content"] = None
             except asyncio.TimeoutError:
-                logger.warning(f"| ❌ Timeout fetching content from {url} (exceeded 20s)")
+                logger.warning(
+                    f"| ❌ Timeout fetching content from {url} (exceeded 20s)"
+                )
                 result["raw_content"] = None
             except Exception as e:
                 logger.warning(f"| ❌ Error fetching content from {url}: {e}")
                 result["raw_content"] = None
         return result
 
-    async def _summarize_results(self, results: List[Dict[str, Any]], query: str) -> List[Dict[str, Any]]:
+    async def _summarize_results(
+        self, results: list[dict[str, Any]], query: str
+    ) -> list[dict[str, Any]]:
         """实现 `_summarize_results` 的业务逻辑。"""
         if not results:
             return results
 
-        async def summarize_single_result(result: Dict[str, Any]) -> Dict[str, Any]:
+        async def summarize_single_result(result: dict[str, Any]) -> dict[str, Any]:
             """实现 `summarize_single_result` 的业务逻辑。"""
             raw_content = result.get("raw_content")
             if not raw_content:
@@ -362,7 +405,7 @@ class WebSearcherTool(Tool):
             And this webpage content:
             Title: {title}
             URL: {url}
-            Content: {raw_content[:self.max_length]}
+            Content: {raw_content[: self.max_length]}
 
             Provide a concise summary (2-4 sentences) that:
             1. Directly addresses the search query
@@ -374,14 +417,16 @@ class WebSearcherTool(Tool):
 
             try:
                 message = HumanMessage(content=prompt)
-                response = await model_manager(model=self.model_name, messages=[message])
+                response = await model_manager(
+                    model=self.model_name, messages=[message]
+                )
                 if response and response.message.strip():
                     result["summary"] = response.message.strip()
                 else:
                     result["summary"] = "Failed to generate summary."
             except Exception as e:
                 logger.warning(f"| ❌ Failed to summarize {url}: {e}")
-                result["summary"] = f"Summary unavailable: {str(e)}"
+                result["summary"] = f"Summary unavailable: {e!s}"
 
             return result
 
@@ -396,14 +441,14 @@ class WebSearcherTool(Tool):
                 logger.error(f"| ❌ Exception while summarizing result {i}: {result}")
                 # 组装并返回结果。
                 if i < len(results):
-                    results[i]["summary"] = f"Summary failed: {str(result)}"
+                    results[i]["summary"] = f"Summary failed: {result!s}"
                     final_results.append(results[i])
             else:
                 final_results.append(result)
 
         return final_results
 
-    async def _merge_summaries(self, results: List[Dict[str, Any]], query: str) -> str:
+    async def _merge_summaries(self, results: list[dict[str, Any]], query: str) -> str:
         """实现 `_merge_summaries` 的业务逻辑。"""
         # 组装并返回结果。
         summarized_results = [r for r in results if r.get("summary")]
@@ -424,7 +469,7 @@ class WebSearcherTool(Tool):
         Search Query: "{query}"
 
         Source Summaries:
-        {''.join(summaries_text)}
+        {"".join(summaries_text)}
 
         Please create a well-structured, comprehensive report that:
         1. Directly answers the search query
@@ -448,8 +493,7 @@ class WebSearcherTool(Tool):
             )
             user_message = HumanMessage(content=prompt)
             response = await model_manager(
-                model=self.model_name,
-                messages=[system_message, user_message]
+                model=self.model_name, messages=[system_message, user_message]
             )
 
             if response and response.message.strip():
@@ -468,7 +512,9 @@ class WebSearcherTool(Tool):
             logger.error(f"| ❌ Failed to merge summaries: {e}")
             return self._fallback_merge_summaries(summarized_results, query)
 
-    def _fallback_merge_summaries(self, results: List[Dict[str, Any]], query: str) -> str:
+    def _fallback_merge_summaries(
+        self, results: list[dict[str, Any]], query: str
+    ) -> str:
         """实现 `_fallback_merge_summaries` 的业务逻辑。"""
         report = f"# Research Report: {query}\n\n"
         report += "## Summary\n\n"
@@ -487,19 +533,15 @@ class WebSearcherTool(Tool):
 
         return report
 
-    def _get_tool_order(self) -> List[str]:
+    def _get_tool_order(self) -> list[str]:
         """实现 `_get_tool_order` 的业务逻辑。"""
-        preferred = getattr(self, 'tool', None) or "firecrawl_search"
-        fallbacks = list(getattr(self, 'fallback_tools', []))
+        preferred = getattr(self, "tool", None) or "firecrawl_search"
+        fallbacks = list(getattr(self, "fallback_tools", []))
 
         # 执行回退或重试逻辑。
         tool_order = [preferred] if preferred in self.search_tools else []
         tool_order.extend(
-            [
-                fb
-                for fb in fallbacks
-                if fb in self.search_tools and fb not in tool_order
-            ]
+            [fb for fb in fallbacks if fb in self.search_tools and fb not in tool_order]
         )
         tool_order.extend([t for t in self.search_tools if t not in tool_order])
 
@@ -510,14 +552,14 @@ class WebSearcherTool(Tool):
         tool: Any,
         query: str,
         num_results: int,
-        search_params: Dict[str, Any],
-    ) -> List[SearchItem]:
+        search_params: dict[str, Any],
+    ) -> list[SearchItem]:
         """实现 `_perform_search_with_tool` 的业务逻辑。"""
 
         @retry(
             stop=stop_after_attempt(3),
             wait=wait_exponential(multiplier=1, min=1, max=10),
-            reraise=True
+            reraise=True,
         )
         async def _do_search():
             result = await tool(
@@ -536,9 +578,13 @@ class WebSearcherTool(Tool):
                     search_items = result.extra.data.get("search_items", [])
                     return search_items
                 else:
-                    raise ValueError(f"Search tool returned invalid response: missing extra")
+                    raise ValueError(
+                        "Search tool returned invalid response: missing extra"
+                    )
             else:
-                raise ValueError(f"Search tool returned invalid response: result is not a ToolResponse")
+                raise TypeError(
+                    "Search tool returned invalid response: result is not a ToolResponse"
+                )
 
         try:
             return await _do_search()
@@ -548,9 +594,13 @@ class WebSearcherTool(Tool):
             if last_exception:
                 error_msg = str(last_exception)
             else:
-                error_msg = f"Search failed after 3 retries: {str(e)}"
-            logger.error(f"| ❌ Search tool {tool.name if hasattr(tool, 'name') else 'unknown'} failed after retries: {error_msg}")
+                error_msg = f"Search failed after 3 retries: {e!s}"
+            logger.error(
+                f"| ❌ Search tool {tool.name if hasattr(tool, 'name') else 'unknown'} failed after retries: {error_msg}"
+            )
             raise ValueError(error_msg) from e
         except Exception as e:
-            logger.error(f"| ❌ Unexpected error in search tool {tool.name if hasattr(tool, 'name') else 'unknown'}: {str(e)}")
+            logger.error(
+                f"| ❌ Unexpected error in search tool {tool.name if hasattr(tool, 'name') else 'unknown'}: {e!s}"
+            )
             raise

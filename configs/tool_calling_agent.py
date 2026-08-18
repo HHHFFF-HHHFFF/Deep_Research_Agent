@@ -1,25 +1,17 @@
 from mmengine.config import read_base
+
 with read_base():
-    from .base import (
-        embedding_fallback_models,
-        embedding_model_id,
-        embedding_model_name,
-        embedding_provider,
-        fallback_models,
-        max_tokens,
-        model_id,
-        model_name,
-        model_provider,
-        window_size,
-    )
     from .agents.tool_calling import tool_calling_agent
-    from .tools.deep_researcher import deep_researcher_tool
-    from .tools.deep_analyzer import deep_analyzer_tool
-    from .tools.mdify import mdify_tool
-    from .tools.todo import todo_tool
-    from .tools.reporter import reporter_tool
+    from .base import (
+        model_name,
+    )
     from .environments.file_system import environment as file_system_environment
     from .memory.general_memory_system import memory_system as general_memory_system
+    from .tools.deep_analyzer import deep_analyzer_tool
+    from .tools.deep_researcher import deep_researcher_tool
+    from .tools.mdify import mdify_tool
+    from .tools.reporter import reporter_tool
+    from .tools.todo import todo_tool
 
 tag = "tool_calling_agent"
 workdir = f"workdir/{tag}"
@@ -29,25 +21,21 @@ use_local_proxy = True
 version = "0.1.0"
 # `model_name` 由基础配置统一生成，不在场景配置中写死厂商。
 
-env_names = [
-    "file_system"
-]
+env_names = ["file_system"]
 memory_names = [
     "general_memory_system",
 ]
-agent_names = [
-    "tool_calling"
-]
+agent_names = ["tool_calling"]
 tool_names = [
-    'done',
-    'todo',
-    'read',
-    'edit',
-    'mdify',
-    'web_searcher',
-    'deep_analyzer',
-    'deep_researcher',
-    'reporter',
+    "done",
+    "todo",
+    "read",
+    "edit",
+    "mdify",
+    "web_searcher",
+    "deep_analyzer",
+    "deep_researcher",
+    "reporter",
 ]
 skill_names = []
 

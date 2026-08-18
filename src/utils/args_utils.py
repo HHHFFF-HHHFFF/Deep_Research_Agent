@@ -2,14 +2,14 @@
 
 import json
 import re
-from typing import Dict, Any
+from typing import Any
 
 import dirtyjson
 
 # 说明相关实现细节。
 
 
-def parse_tool_args(args_str: str) -> Dict[str, Any]:
+def parse_tool_args(args_str: str) -> dict[str, Any]:
     """解析与 `parse_tool_args` 对应的数据或状态。"""
     if not args_str:
         return {}
@@ -17,13 +17,13 @@ def parse_tool_args(args_str: str) -> Dict[str, Any]:
     # 说明相关实现细节。
     try:
         return dirtyjson.loads(args_str)
-    except (dirtyjson.Error, ValueError, TypeError) as e:
+    except (dirtyjson.Error, ValueError, TypeError):
         pass
 
     # 说明相关实现细节。
     try:
         return json.loads(args_str)
-    except json.JSONDecodeError as e:
+    except json.JSONDecodeError:
         pass
 
     # 说明相关实现细节。
@@ -31,9 +31,9 @@ def parse_tool_args(args_str: str) -> Dict[str, Any]:
     try:
         # 说明相关实现细节。
         # 说明相关实现细节。
-        fixed_str = re.sub(r'\\(?!["\\/bfnrtu])', r'\\\\', args_str)
+        fixed_str = re.sub(r'\\(?!["\\/bfnrtu])', r"\\\\", args_str)
         return json.loads(fixed_str)
-    except (json.JSONDecodeError, re.error) as e:
+    except (json.JSONDecodeError, re.error):
         pass
 
     # 说明相关实现细节。
@@ -45,13 +45,15 @@ def parse_tool_args(args_str: str) -> Dict[str, Any]:
         for key, str_val, num_val in matches:
             if str_val:
                 # 说明相关实现细节。
-                result[key] = str_val.encode().decode('unicode_escape', errors='replace')
+                result[key] = str_val.encode().decode(
+                    "unicode_escape", errors="replace"
+                )
             elif num_val:
-                result[key] = int(num_val) if '.' not in num_val else float(num_val)
+                result[key] = int(num_val) if "." not in num_val else float(num_val)
         if result:
             return result
-    except Exception as e:
-        pass
+    except (TypeError, UnicodeError, ValueError):
+        return {}
 
     # 处理异常情况。
     return {}

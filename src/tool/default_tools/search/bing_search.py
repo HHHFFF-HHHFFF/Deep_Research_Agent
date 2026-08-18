@@ -1,16 +1,14 @@
-from typing import List, Optional, Tuple, Dict, Any
 import json
-import asyncio
+from typing import Any
 
 import aiohttp
 from bs4 import BeautifulSoup
 from pydantic import Field
 
-from src.tool.default_tools.search.types import SearchItem
-from src.tool.types import Tool, ToolResponse, ToolExtra
 from src.logger import logger
 from src.registry import TOOL
-
+from src.tool.default_tools.search.types import SearchItem
+from src.tool.types import Tool, ToolExtra, ToolResponse
 
 ABSTRACT_MAX_LENGTH = 300
 
@@ -50,14 +48,14 @@ class BingSearch(Tool):
         "useful for when you need to answer questions about current events."
         " input should be a search query."
     )
-    metadata: Dict[str, Any] = Field(default={}, description="The metadata of the tool")
-    session: Optional[aiohttp.ClientSession] = None
+    metadata: dict[str, Any] = Field(default={}, description="The metadata of the tool")
+    session: aiohttp.ClientSession | None = None
 
     def __init__(self, **kwargs):
         """初始化实例。"""
         super().__init__(**kwargs)
 
-    async def _search(self, query: str, num_results: int = 10) -> List[SearchItem]:
+    async def _search(self, query: str, num_results: int = 10) -> list[SearchItem]:
         """实现 `_search` 的业务逻辑。"""
         if not query:
             return []
@@ -80,7 +78,7 @@ class BingSearch(Tool):
 
     async def _parse_html(
         self, url: str, rank_start: int = 0, first: int = 1
-    ) -> Tuple[List[SearchItem], str]:
+    ) -> tuple[list[SearchItem], str]:
         """实现 `_parse_html` 的业务逻辑。"""
         try:
             # 创建所需对象。
@@ -124,7 +122,8 @@ class BingSearch(Tool):
                             description=abstract,
                         )
                     )
-                except Exception:
+                except Exception as error:
+                    logger.debug(f"跳过无法解析的 Bing 搜索结果：{error}")
                     continue
 
             next_btn = root.find("a", title="Next page")
@@ -140,11 +139,11 @@ class BingSearch(Tool):
     async def __call__(
         self,
         query: str,
-        num_results: Optional[int] = 10,
-        country: Optional[str] = "us",
-        lang: Optional[str] = "en",
-        filter_year: Optional[int] = None,
-        **kwargs
+        num_results: int | None = 10,
+        country: str | None = "us",
+        lang: str | None = "en",
+        filter_year: int | None = None,
+        **kwargs,
     ) -> ToolResponse:
         """执行组件调用并返回结果。"""
         try:
@@ -152,11 +151,18 @@ class BingSearch(Tool):
             search_items = await self._search(query, num_results=num_results)
 
             # 组装并返回结果。
-            results_json = json.dumps([{
-                "title": item.title,
-                "url": item.url,
-                "description": item.description or ""
-            } for item in search_items], ensure_ascii=False, indent=4)
+            results_json = json.dumps(
+                [
+                    {
+                        "title": item.title,
+                        "url": item.url,
+                        "description": item.description or "",
+                    }
+                    for item in search_items
+                ],
+                ensure_ascii=False,
+                indent=4,
+            )
 
             message = f"Bing search results for query: {query}\n\n{results_json}"
 
@@ -168,14 +174,11 @@ class BingSearch(Tool):
                         "query": query,
                         "num_results": len(search_items),
                         "search_items": search_items,
-                        "engine": "bing"
+                        "engine": "bing",
                     }
-                )
+                ),
             )
 
         except Exception as e:
             logger.error(f"Error in Bing search: {e}")
-            return ToolResponse(
-                success=False,
-                message=f"Error in Bing search: {str(e)}"
-            )
+            return ToolResponse(success=False, message=f"Error in Bing search: {e!s}")

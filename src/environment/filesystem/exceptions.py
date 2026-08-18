@@ -1,13 +1,17 @@
 from __future__ import annotations
 
-from typing import Optional, Union
 from pathlib import Path
 
 
 class FileSystemError(Exception):
     """定义 `FileSystemError`，封装相关数据与行为。"""
 
-    def __init__(self, message: str, path: Optional[Union[str, Path]] = None, error_code: Optional[str] = None):
+    def __init__(
+        self,
+        message: str,
+        path: str | Path | None = None,
+        error_code: str | None = None,
+    ):
         super().__init__(message)
         self.message = message
         self.path = str(path) if path else None
@@ -22,14 +26,19 @@ class FileSystemError(Exception):
 class InvalidPathError(FileSystemError):
     """定义 `InvalidPathError`，封装相关数据与行为。"""
 
-    def __init__(self, message: str, path: Optional[Union[str, Path]] = None):
+    def __init__(self, message: str, path: str | Path | None = None):
         super().__init__(message, path, "INVALID_PATH")
 
 
 class PathTraversalError(FileSystemError):
     """定义 `PathTraversalError`，封装相关数据与行为。"""
 
-    def __init__(self, message: str, path: Optional[Union[str, Path]] = None, base_dir: Optional[Union[str, Path]] = None):
+    def __init__(
+        self,
+        message: str,
+        path: str | Path | None = None,
+        base_dir: str | Path | None = None,
+    ):
         super().__init__(message, path, "PATH_TRAVERSAL")
         self.base_dir = str(base_dir) if base_dir else None
 
@@ -37,14 +46,19 @@ class PathTraversalError(FileSystemError):
 class NotFoundError(FileSystemError):
     """定义 `NotFoundError`，封装相关数据与行为。"""
 
-    def __init__(self, message: str, path: Optional[Union[str, Path]] = None):
+    def __init__(self, message: str, path: str | Path | None = None):
         super().__init__(message, path, "NOT_FOUND")
 
 
 class ConflictError(FileSystemError):
     """定义 `ConflictError`，封装相关数据与行为。"""
 
-    def __init__(self, message: str, path: Optional[Union[str, Path]] = None, conflict_type: Optional[str] = None):
+    def __init__(
+        self,
+        message: str,
+        path: str | Path | None = None,
+        conflict_type: str | None = None,
+    ):
         super().__init__(message, path, "CONFLICT")
         self.conflict_type = conflict_type
 
@@ -52,7 +66,9 @@ class ConflictError(FileSystemError):
 class PermissionDeniedError(FileSystemError):
     """定义 `PermissionDeniedError`，封装相关数据与行为。"""
 
-    def __init__(self, message: str, path: Optional[Union[str, Path]] = None, operation: Optional[str] = None):
+    def __init__(
+        self, message: str, path: str | Path | None = None, operation: str | None = None
+    ):
         super().__init__(message, path, "PERMISSION_DENIED")
         self.operation = operation
 
@@ -60,7 +76,9 @@ class PermissionDeniedError(FileSystemError):
 class UnsupportedTypeError(FileSystemError):
     """定义 `UnsupportedTypeError`，封装相关数据与行为。"""
 
-    def __init__(self, message: str, file_type: Optional[str] = None, path: Optional[Union[str, Path]] = None):
+    def __init__(
+        self, message: str, file_type: str | None = None, path: str | Path | None = None
+    ):
         super().__init__(message, path, "UNSUPPORTED_TYPE")
         self.file_type = file_type
 
@@ -68,7 +86,9 @@ class UnsupportedTypeError(FileSystemError):
 class InvalidArgumentError(FileSystemError):
     """定义 `InvalidArgumentError`，封装相关数据与行为。"""
 
-    def __init__(self, message: str, argument: Optional[str] = None, value: Optional[str] = None):
+    def __init__(
+        self, message: str, argument: str | None = None, value: str | None = None
+    ):
         super().__init__(message, error_code="INVALID_ARGUMENT")
         self.argument = argument
         self.value = value
@@ -77,7 +97,7 @@ class InvalidArgumentError(FileSystemError):
 class CacheError(FileSystemError):
     """定义 `CacheError`，封装相关数据与行为。"""
 
-    def __init__(self, message: str, operation: Optional[str] = None):
+    def __init__(self, message: str, operation: str | None = None):
         super().__init__(message, error_code="CACHE_ERROR")
         self.operation = operation
 
@@ -85,7 +105,9 @@ class CacheError(FileSystemError):
 class StorageError(FileSystemError):
     """定义 `StorageError`，封装相关数据与行为。"""
 
-    def __init__(self, message: str, path: Optional[Union[str, Path]] = None, operation: Optional[str] = None):
+    def __init__(
+        self, message: str, path: str | Path | None = None, operation: str | None = None
+    ):
         super().__init__(message, path, "STORAGE_ERROR")
         self.operation = operation
 
@@ -93,7 +115,12 @@ class StorageError(FileSystemError):
 class HandlerError(FileSystemError):
     """定义 `HandlerError`，封装相关数据与行为。"""
 
-    def __init__(self, message: str, handler_type: Optional[str] = None, path: Optional[Union[str, Path]] = None):
+    def __init__(
+        self,
+        message: str,
+        handler_type: str | None = None,
+        path: str | Path | None = None,
+    ):
         super().__init__(message, path, "HANDLER_ERROR")
         self.handler_type = handler_type
 
@@ -101,6 +128,8 @@ class HandlerError(FileSystemError):
 class LockError(FileSystemError):
     """定义 `LockError`，封装相关数据与行为。"""
 
-    def __init__(self, message: str, path: Optional[Union[str, Path]] = None, operation: Optional[str] = None):
+    def __init__(
+        self, message: str, path: str | Path | None = None, operation: str | None = None
+    ):
         super().__init__(message, path, "LOCK_ERROR")
         self.operation = operation

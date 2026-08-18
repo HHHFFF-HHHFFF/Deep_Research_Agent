@@ -1,30 +1,37 @@
-import os
 from dotenv import load_dotenv
+
 load_dotenv(verbose=True)
 
-from markitdown import MarkItDown
-import io
-import base64
-from typing import BinaryIO, Any
-import camelot
-import tempfile
 import asyncio
+import base64
+import io
+import tempfile
 import threading
-import concurrent.futures
-from markitdown.converters import PdfConverter
-from markitdown.converters import AudioConverter
-from markitdown.converters._pdf_converter import _dependency_exc_info
-from markitdown.converters._exiftool import exiftool_metadata
-from markitdown._stream_info import StreamInfo
-from markitdown._base_converter import DocumentConverterResult
-from markitdown._exceptions import MissingDependencyException, MISSING_DEPENDENCY_MESSAGE
+from typing import Any, BinaryIO
+
+import camelot
 import pdfminer
 import pdfminer.high_level
+from markitdown import MarkItDown
+from markitdown._base_converter import DocumentConverterResult
+from markitdown._exceptions import (
+    MISSING_DEPENDENCY_MESSAGE,
+    MissingDependencyException,
+)
+from markitdown._stream_info import StreamInfo
+from markitdown.converters import AudioConverter, PdfConverter
+from markitdown.converters._exiftool import exiftool_metadata
+from markitdown.converters._pdf_converter import _dependency_exc_info
 
-
-from src.model import model_manager
-from src.message import HumanMessage, SystemMessage, ContentPartText, ContentPartAudio, AudioURL
 from src.logger import logger
+from src.message import (
+    AudioURL,
+    ContentPartAudio,
+    ContentPartText,
+    HumanMessage,
+    SystemMessage,
+)
+from src.model import model_manager
 
 
 def read_tables_from_stream(file_stream):
@@ -34,16 +41,23 @@ def read_tables_from_stream(file_stream):
         tables = camelot.read_pdf(temp_pdf.name, flavor="lattice")
         return tables
 
+
 def transcribe_audio(file_stream, audio_format):
     """实现 `transcribe_audio` 的业务逻辑。"""
     audio_base64 = base64.b64encode(file_stream).decode("utf-8")
     audio_url = "data:audio/" + audio_format + ";base64," + audio_base64
     messages = [
-        SystemMessage(content="You are a helpful assistant that transcribes audio files."),
-        HumanMessage(content=[
-            ContentPartText(text="Please transcribe the audio file and provide the transcription. Only return the transcription, no other text or formatting."),
-            ContentPartAudio(audio_url=AudioURL(url=audio_url)),
-        ]),
+        SystemMessage(
+            content="You are a helpful assistant that transcribes audio files."
+        ),
+        HumanMessage(
+            content=[
+                ContentPartText(
+                    text="Please transcribe the audio file and provide the transcription. Only return the transcription, no other text or formatting."
+                ),
+                ContentPartAudio(audio_url=AudioURL(url=audio_url)),
+            ]
+        ),
     ]
 
     async def _transcribe_async():
@@ -54,7 +68,6 @@ def transcribe_audio(file_stream, audio_format):
     # 执行异步任务。
     try:
         # 说明相关实现细节。
-        loop = asyncio.get_running_loop()
         # 创建所需对象。
         result = None
         exception = None
@@ -77,13 +90,13 @@ def transcribe_audio(file_stream, audio_format):
         # 执行异步任务。
         return asyncio.run(_transcribe_async())
 
-class AudioWhisperConverter(AudioConverter):
 
+class AudioWhisperConverter(AudioConverter):
     def convert(
-            self,
-            file_stream: BinaryIO,
-            stream_info: StreamInfo,
-            **kwargs: Any,  # 转换并规范化数据。
+        self,
+        file_stream: BinaryIO,
+        stream_info: StreamInfo,
+        **kwargs: Any,  # 转换并规范化数据。
     ) -> DocumentConverterResult:
         md_content = ""
 
@@ -117,8 +130,8 @@ class AudioWhisperConverter(AudioConverter):
         elif stream_info.extension == ".mp3" or stream_info.mimetype == "audio/mpeg":
             audio_format = "mp3"
         elif (
-                stream_info.extension in [".mp4", ".m4a"]
-                or stream_info.mimetype == "video/mp4"
+            stream_info.extension in [".mp4", ".m4a"]
+            or stream_info.mimetype == "video/mp4"
         ):
             audio_format = "mp4"
         else:
@@ -136,6 +149,7 @@ class AudioWhisperConverter(AudioConverter):
         # 组装并返回结果。
         return DocumentConverterResult(markdown=md_content.strip())
 
+
 class PdfWithTableConverter(PdfConverter):
     def convert(
         self,
@@ -151,9 +165,7 @@ class PdfWithTableConverter(PdfConverter):
                     extension=".pdf",
                     feature="pdf",
                 )
-            ) from _dependency_exc_info[
-                1
-            ].with_traceback(  # type: ignore[union-attr]
+            ) from _dependency_exc_info[1].with_traceback(  # type: ignore[union-attr]
                 _dependency_exc_info[2]
             )
 
@@ -170,13 +182,16 @@ class PdfWithTableConverter(PdfConverter):
             table_content = ""
             for i in range(num_tables):
                 table = tables[i].df
-                table_content += f"Table {i + 1}:\n" + table.to_markdown(index=False) + "\n\n"
+                table_content += (
+                    f"Table {i + 1}:\n" + table.to_markdown(index=False) + "\n\n"
+                )
             markdown_content += "\n\n" + table_content
             return DocumentConverterResult(
                 markdown=markdown_content,
             )
 
-class MarkitdownConverter():
+
+class MarkitdownConverter:
     def __init__(self, timeout: int = 30):
 
         self.timeout = timeout
@@ -184,15 +199,14 @@ class MarkitdownConverter():
         self.client = MarkItDown(
             enable_plugins=True,
             llm_model="gpt-4.1",
-            llm_prompt="Please describe the content of the image in as much detail as possible."
+            llm_prompt="Please describe the content of the image in as much detail as possible.",
         )
 
-        removed_converters = [
-            PdfConverter, AudioConverter
-        ]
+        removed_converters = [PdfConverter, AudioConverter]
 
         self.client._converters = [
-            converter for converter in self.client._converters
+            converter
+            for converter in self.client._converters
             if not isinstance(converter.converter, tuple(removed_converters))
         ]
         self.client.register_converter(PdfWithTableConverter())
@@ -200,9 +214,7 @@ class MarkitdownConverter():
 
     def convert(self, source: str, **kwargs: Any):
         try:
-            result = self.client.convert(
-                source,
-                **kwargs)
+            result = self.client.convert(source, **kwargs)
             return result
         except Exception as e:
             logger.error(f"Error during conversion: {e}")
