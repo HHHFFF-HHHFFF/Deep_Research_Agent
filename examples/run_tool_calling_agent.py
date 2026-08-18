@@ -16,6 +16,7 @@ root = str(Path(__file__).resolve().parents[1])
 sys.path.append(root)
 
 from src.agent import acp
+from src.application import ResearchRequest, resolve_research_task
 from src.config import config
 from src.environment import ecp
 from src.logger import logger
@@ -31,6 +32,10 @@ from src.version import version_manager
 def parse_args():
     parser = argparse.ArgumentParser(description="运行深度研究智能体")
     parser.add_argument("--config", default=os.path.join(root, "configs", "tool_calling_agent.py"), help="配置文件路径")
+    parser.add_argument(
+        "--task",
+        help="需要研究的问题或方向；未提供时将在终端中交互输入",
+    )
     parser.add_argument("--provider", dest="model_provider", help="聊天模型提供方，例如 qwen 或 deepseek")
     parser.add_argument("--model", dest="model_id", help="聊天模型标识，例如 qwen-plus")
     parser.add_argument(
@@ -53,6 +58,14 @@ def parse_args():
 
 async def main():
     args = parse_args()
+
+    try:
+        research_request = ResearchRequest(
+            task=resolve_research_task(args.task),
+            files=[],
+        )
+    except ValueError as error:
+        raise SystemExit(f"研究主题无效：{error}") from error
 
     config.initialize(config_path = args.config, args = args)
     logger.initialize(config = config)
@@ -104,25 +117,21 @@ async def main():
     await version_manager.initialize()
     logger.info(f"| ✅ Version manager initialized: {json.dumps(await version_manager.list(), indent=4)}")
 
-    # 检索所需信息。
-    task = "调研 RAG 系统中的幻觉问题，并生成带来源的中文报告。"
-    files = []
-
-    logger.info(f"| 📋 Task: {task}")
-    logger.info(f"| 📂 Files: {files}")
+    logger.info(f"| 📋 Task: {research_request.task}")
+    logger.info(f"| 📂 Files: {research_request.files}")
 
     # 说明相关实现细节。
     ctx = SessionContext()
 
-    input = {
+    agent_input = {
         "name": "tool_calling",
         "input": {
-            "task": task,
-            "files": files
+            "task": research_request.task,
+            "files": research_request.files,
         },
         "ctx": ctx
     }
-    await acp(**input)
+    await acp(**agent_input)
 
 if __name__ == "__main__":
     asyncio.run(main())

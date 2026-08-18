@@ -82,13 +82,15 @@ MODEL_FALLBACKS=deepseek/deepseek-v4-flash
 ### 2. 启动项目
 
 ```bash
-python examples/run_tool_calling_agent.py --config configs/tool_calling_agent.py
+python examples/run_tool_calling_agent.py --task "调研 RAG 系统中的幻觉问题，并生成带来源的中文报告。"
 ```
+
+如果省略 `--task`，程序会在终端中提示输入研究主题。研究主题不再写死在源码中。
 
 也可以通过命令行临时切换聊天模型：
 
 ```bash
-python examples/run_tool_calling_agent.py --provider deepseek --model deepseek-v4-flash
+python examples/run_tool_calling_agent.py --task "研究主题" --provider deepseek --model deepseek-v4-flash
 ```
 
 ## 模型接入架构
