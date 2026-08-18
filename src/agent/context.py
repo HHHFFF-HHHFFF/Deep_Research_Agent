@@ -325,7 +325,7 @@ class AgentContextManager(BaseModel):
                 current_agent_config: AgentConfig | None = None
 
                 for version_data in versions.values():
-                    agent_config = AgentConfig.model_validate(version_data)
+                    agent_config = AgentConfig.from_dict(version_data)
                     version = agent_config.version
                     version_map[version] = agent_config
 
@@ -945,7 +945,7 @@ class AgentContextManager(BaseModel):
                                 config_dict["version"] = version_str
 
                             try:
-                                agent_config = AgentConfig.model_validate(config_dict)
+                                agent_config = AgentConfig.from_dict(config_dict)
                                 version_configs.append(agent_config)
                             except Exception as e:
                                 logger.warning(

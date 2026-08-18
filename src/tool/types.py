@@ -49,10 +49,6 @@ class Tool(BaseModel):
         default=False, description="Whether the tool requires gradients"
     )
 
-    async def __call__(self, **kwargs) -> ToolResponse:
-        """执行组件调用并返回结果。"""
-        raise NotImplementedError("All tools must implement __call__")
-
 
 class ToolConfig(BaseModel):
     """定义 `ToolConfig`，封装相关数据与行为。"""
@@ -111,51 +107,18 @@ class ToolConfig(BaseModel):
         return result
 
     @classmethod
-    def model_validate(cls, data: dict[str, Any]) -> ToolConfig:
-        """实现 `model_validate` 的业务逻辑。"""
-        name = data.get("name")
-        description = data.get("description")
-        metadata = data.get("metadata")
-        require_grad = data.get("require_grad", False)  # 说明相关实现细节。
-        version = data.get("version")
-
-        cls_ = None
-        code = data.get("code")
-        if code:
-            class_name = dynamic_manager.extract_class_name_from_code(code)
-            if class_name:
-                try:
-                    cls_ = dynamic_manager.load_class(
-                        code, class_name=class_name, base_class=Tool, context="tool"
-                    )
-                except Exception:
-                    cls_ = None
-            else:
-                cls_ = None
-        else:
-            cls_ = None
-
-        config = data.get("config")
-        instance = data.get("instance", None)
-
-        function_calling = data.get("function_calling")
-        text = data.get("text")
-        args_schema = dynamic_manager.deserialize_args_schema(data.get("args_schema"))
-
-        return cls(
-            name=name,
-            description=description,
-            metadata=metadata,
-            require_grad=require_grad,
-            version=version,
-            cls=cls_,
-            config=config,
-            instance=instance,
-            code=code,
-            function_calling=function_calling,
-            text=text,
-            args_schema=args_schema,
+    def from_dict(cls, data: dict[str, Any]) -> ToolConfig:
+        """从持久化字典恢复工具配置，不执行其中携带的代码。"""
+        payload = dict(data)
+        serialized_schema = payload.get("args_schema")
+        payload["args_schema"] = (
+            dynamic_manager.deserialize_args_schema(serialized_schema)
+            if isinstance(serialized_schema, dict)
+            else None
         )
+        payload["cls"] = None
+        payload["instance"] = None
+        return cls.model_validate(payload)
 
 
 __all__ = [

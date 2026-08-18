@@ -1,6 +1,22 @@
-"""提供  init  相关实现。"""
+"""按需导出智能体组件，避免导入包时触发运行时初始化。"""
 
-from .server import acp
-from .tool_calling_agent import ToolCallingAgent
+from importlib import import_module
+from typing import Any
 
-__all__ = ["ToolCallingAgent", "acp"]
+_EXPORTS = {
+    "ToolCallingAgent": (".tool_calling_agent", "ToolCallingAgent"),
+    "acp": (".server", "acp"),
+}
+
+__all__ = list(_EXPORTS)
+
+
+def __getattr__(name: str) -> Any:
+    """首次访问导出项时再加载对应模块。"""
+    try:
+        module_name, attribute_name = _EXPORTS[name]
+    except KeyError as error:
+        raise AttributeError(f"模块 {__name__!r} 不包含属性 {name!r}") from error
+    value = getattr(import_module(module_name, __name__), attribute_name)
+    globals()[name] = value
+    return value

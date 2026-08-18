@@ -318,7 +318,7 @@ class ToolContextManager(BaseModel):
                 current_tool_config: ToolConfig | None = None
 
                 for version_data in versions.values():
-                    tool_config = ToolConfig.model_validate(version_data)
+                    tool_config = ToolConfig.from_dict(version_data)
                     version = tool_config.version
                     version_map[version] = tool_config
 
@@ -942,7 +942,7 @@ class ToolContextManager(BaseModel):
                                 config_dict["version"] = version_str
 
                             try:
-                                tool_config = ToolConfig.model_validate(config_dict)
+                                tool_config = ToolConfig.from_dict(config_dict)
                                 version_configs.append(tool_config)
                             except Exception as e:
                                 logger.warning(

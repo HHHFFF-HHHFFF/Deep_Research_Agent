@@ -324,7 +324,7 @@ class MemoryContextManager(BaseModel):
 
                 for version_data in versions.values():
                     # 配置相关参数。
-                    memory_config = MemoryConfig.model_validate(version_data)
+                    memory_config = MemoryConfig.from_dict(version_data)
                     version = memory_config.version
                     version_map[version] = memory_config
 
@@ -930,7 +930,7 @@ class MemoryContextManager(BaseModel):
                                 config_dict["version"] = version_str
 
                             try:
-                                memory_config = MemoryConfig.model_validate(config_dict)
+                                memory_config = MemoryConfig.from_dict(config_dict)
                                 version_configs.append(memory_config)
                             except Exception as e:
                                 logger.warning(
@@ -1161,7 +1161,7 @@ class MemoryContextManager(BaseModel):
         agent_name: str | None = None,
         task_id: str | None = None,
         description: str | None = None,
-        ctx: SessionContext = None,
+        ctx: SessionContext | None = None,
         **kwargs,
     ) -> str:
         """实现 `start_session` 的业务逻辑。"""
@@ -1224,11 +1224,13 @@ class MemoryContextManager(BaseModel):
         self,
         memory_name: str,
         n: int | None = None,
-        ctx: SessionContext = None,
+        ctx: SessionContext | None = None,
         **kwargs,
     ) -> dict[str, Any]:
         """获取与 `get_state` 对应的数据或状态。"""
         memory_info = await self.get_info(memory_name)
+        if memory_info is None or memory_info.instance is None:
+            raise ValueError(f"记忆系统不存在或尚未初始化：{memory_name}")
 
         version = memory_info.version
         memory_instance = memory_info.instance

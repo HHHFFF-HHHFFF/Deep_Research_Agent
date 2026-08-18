@@ -1,6 +1,5 @@
 """提供数据类型相关实现。"""
 
-import json
 import uuid
 from collections.abc import Callable
 from enum import Enum
@@ -204,7 +203,7 @@ class ActionConfig(BaseModel):
             "description": self.description,
             "metadata": self.metadata,
             "version": self.version,
-            "function": f"<{self.function.__name__}>",
+            "function": f"<{self.function.__name__}>" if self.function else None,
             "code": self.code,
             "args_schema": dynamic_manager.serialize_args_schema(self.args_schema)
             if self.args_schema
@@ -216,33 +215,17 @@ class ActionConfig(BaseModel):
         return result
 
     @classmethod
-    def model_validate(cls, data: dict[str, Any]) -> "ActionConfig":
-        """实现 `model_validate` 的业务逻辑。"""
-        env_name = data.get("env_name")
-        name = data.get("name")
-        description = data.get("description")
-        metadata = data.get("metadata")
-        version = data.get("version")
-
-        code = data.get("code")
-        function = None
-
-        args_schema = dynamic_manager.deserialize_args_schema(data.get("args_schema"))
-        function_calling = data.get("function_calling")
-        text = data.get("text")
-
-        return cls(
-            env_name=env_name,
-            name=name,
-            description=description,
-            metadata=metadata,
-            version=version,
-            function=function,
-            code=code,
-            args_schema=args_schema,
-            function_calling=function_calling,
-            text=text,
+    def from_dict(cls, data: dict[str, Any]) -> "ActionConfig":
+        """从持久化字典恢复动作配置，不执行其中携带的函数。"""
+        payload = dict(data)
+        serialized_schema = payload.get("args_schema")
+        payload["args_schema"] = (
+            dynamic_manager.deserialize_args_schema(serialized_schema)
+            if isinstance(serialized_schema, dict)
+            else None
         )
+        payload["function"] = None
+        return cls.model_validate(payload)
 
 
 class EnvironmentConfig(BaseModel):
@@ -302,69 +285,22 @@ class EnvironmentConfig(BaseModel):
         return result
 
     @classmethod
-    def model_validate(cls, data: dict[str, Any]) -> "EnvironmentConfig":
-        """实现 `model_validate` 的业务逻辑。"""
-
-        name = data.get("name")
-        description = data.get("description")
-        metadata = data.get("metadata")
-        rules = data.get("rules")
-        version = data.get("version")
-        require_grad = data.get("require_grad", False)
-
-        cls_ = None
-        code = data.get("code")
-        if code:
-            class_name = dynamic_manager.extract_class_name_from_code(code)
-            if class_name:
-                try:
-                    cls_ = dynamic_manager.load_class(
-                        code,
-                        class_name=class_name,
-                        base_class=Environment,
-                        context="environment",
-                    )
-                except Exception:
-                    cls_ = None
-            else:
-                cls_ = None
-        else:
-            cls_ = None
-
-        config = data.get("config")
-        instance = data.get("instance", None)
-
-        actions = {
-            name: ActionConfig.model_validate(action_config)
-            for name, action_config in data.get("actions", {}).items()
-        }
-
-        # 加载所需数据。
-        if cls_ is not None:
-            for action_name, action_config in actions.items():
-                # 处理工具调用。
-                if hasattr(cls_, action_name):
-                    attr = getattr(cls_, action_name)
-                    if (
-                        hasattr(attr, "_action_name")
-                        and attr._action_name == action_name
-                    ):
-                        action_config.function = attr
-                        continue
-
-        return cls(
-            name=name,
-            description=description,
-            metadata=metadata,
-            rules=rules,
-            version=version,
-            require_grad=require_grad,
-            cls=cls_,
-            config=config,
-            instance=instance,
-            code=code,
-            actions=actions,
+    def from_dict(cls, data: dict[str, Any]) -> "EnvironmentConfig":
+        """从持久化字典恢复环境配置，不执行其中携带的代码。"""
+        payload = dict(data)
+        serialized_actions = payload.get("actions", {})
+        payload["actions"] = (
+            {
+                name: ActionConfig.from_dict(action_data)
+                for name, action_data in serialized_actions.items()
+                if isinstance(action_data, dict)
+            }
+            if isinstance(serialized_actions, dict)
+            else {}
         )
+        payload["cls"] = None
+        payload["instance"] = None
+        return cls.model_validate(payload)
 
 
 class ScreenshotInfo(BaseModel):
@@ -416,9 +352,6 @@ class ActionResult(BaseModel):
             "message": self.message,
             "extra": serialize_value(self.extra) if self.extra is not None else None,
         }
-
-    def model_dump_json(self) -> str:
-        return json.dumps(self.model_dump())
 
 
 class EnvironmentState(BaseModel):

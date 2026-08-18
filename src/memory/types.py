@@ -176,44 +176,12 @@ class MemoryConfig(BaseModel):
         }
 
     @classmethod
-    def model_validate(cls, data: dict[str, Any]) -> "MemoryConfig":
-        """实现 `model_validate` 的业务逻辑。"""
-        name = data.get("name")
-        description = data.get("description")
-        require_grad = data.get("require_grad", False)  # 说明相关实现细节。
-        version = data.get("version", "1.0.0")
-
-        cls_ = None
-        code = data.get("code")
-        if code:
-            class_name = dynamic_manager.extract_class_name_from_code(code)
-            if class_name:
-                try:
-                    cls_ = dynamic_manager.load_class(
-                        code, class_name=class_name, base_class=Memory, context="memory"
-                    )
-                except Exception:
-                    cls_ = None
-            else:
-                cls_ = None
-        else:
-            cls_ = None
-
-        config = data.get("config", {})
-        instance = data.get("instance", None)
-        metadata = data.get("metadata", {})
-
-        return cls(
-            name=name,
-            description=description,
-            require_grad=require_grad,
-            version=version,
-            cls=cls_,
-            config=config,
-            instance=instance,
-            metadata=metadata,
-            code=code,
-        )
+    def from_dict(cls, data: dict[str, Any]) -> "MemoryConfig":
+        """从持久化字典恢复记忆配置，不执行其中携带的代码。"""
+        payload = dict(data)
+        payload["cls"] = None
+        payload["instance"] = None
+        return cls.model_validate(payload)
 
     def __str__(self):
         return f"MemoryConfig(name={self.name}, description={self.description}, version={self.version})"

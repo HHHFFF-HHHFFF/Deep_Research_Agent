@@ -162,7 +162,11 @@ class MemoryManager(BaseModel):
         )
 
     async def get_state(
-        self, name: str, n: int | None = None, ctx: SessionContext = None, **kwargs
+        self,
+        name: str,
+        n: int | None = None,
+        ctx: SessionContext | None = None,
+        **kwargs,
     ) -> dict[str, Any]:
         """获取与 `get_state` 对应的数据或状态。"""
         return await self.memory_context_manager.get_state(name, n, ctx, **kwargs)

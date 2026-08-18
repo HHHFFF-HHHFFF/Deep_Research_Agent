@@ -12,15 +12,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from src.config import config
 from src.dynamic import dynamic_manager
-from src.environment.server import ecp
 from src.logger import logger
-from src.memory import EventType, memory_manager
+from src.memory.types import EventType
 from src.message.types import HumanMessage, Message, SystemMessage
-from src.model import model_manager
-from src.prompt import prompt_manager
 from src.session import SessionContext
-from src.skill.server import scp
-from src.tool.server import tcp
 from src.utils import (
     dedent,
     get_file_info,
@@ -126,50 +121,18 @@ class AgentConfig(BaseModel):
         return result
 
     @classmethod
-    def model_validate(cls, data: dict[str, Any]) -> AgentConfig:
-        """实现 `model_validate` 的业务逻辑。"""
-        name = data.get("name")
-        description = data.get("description")
-        metadata = data.get("metadata", {})
-        version = data.get("version")
-        require_grad = data.get("require_grad", False)
-
-        cls_ = None
-        code = data.get("code")
-        if code:
-            class_name = dynamic_manager.extract_class_name_from_code(code)
-            if class_name:
-                try:
-                    cls_ = dynamic_manager.load_class(
-                        code, class_name=class_name, base_class=Agent, context="agent"
-                    )
-                except Exception:
-                    cls_ = None
-            else:
-                cls_ = None
-        else:
-            cls_ = None
-
-        config = data.get("config", {})
-        instance = data.get("instance", None)
-
-        function_calling = data.get("function_calling")
-        text = data.get("text")
-        args_schema = dynamic_manager.deserialize_args_schema(data.get("args_schema"))
-
-        return cls(
-            name=name,
-            description=description,
-            metadata=metadata,
-            version=version,
-            require_grad=require_grad,
-            cls=cls_,
-            config=config,
-            instance=instance,
-            function_calling=function_calling,
-            text=text,
-            args_schema=args_schema,
+    def from_dict(cls, data: dict[str, Any]) -> AgentConfig:
+        """从持久化字典恢复智能体配置，不执行其中携带的代码。"""
+        payload = dict(data)
+        serialized_schema = payload.get("args_schema")
+        payload["args_schema"] = (
+            dynamic_manager.deserialize_args_schema(serialized_schema)
+            if isinstance(serialized_schema, dict)
+            else None
         )
+        payload["cls"] = None
+        payload["instance"] = None
+        return cls.model_validate(payload)
 
     def __str__(self) -> str:
         return (
@@ -182,23 +145,19 @@ class AgentConfig(BaseModel):
         return self.__str__()
 
 
-def format_actions(actions: list[BaseModel]) -> str:
+def format_actions(actions: list[ActionInputArgs]) -> str:
     """格式化与 `format_actions` 对应的数据或状态。"""
     rows = []
     for action in actions:
-        if isinstance(action.args, dict):
-            args_str = ", ".join(f"{k}={v}" for k, v in action.args.items())
-        else:
-            args_str = str(action.args)
+        args_str = action.args
+        output = getattr(action, "output", None)
 
         rows.append(
             {
-                "Type": action.type if hasattr(action, "type") else "tool",
+                "Type": action.type,
                 "Name": action.name,
                 "Args": args_str,
-                "Output": action.output
-                if hasattr(action, "output") and action.output is not None
-                else None,
+                "Output": output,
             }
         )
 
@@ -317,11 +276,13 @@ class Agent(BaseModel):
 
     async def _extract_file_content(self, file: str) -> dict[str, Any]:
         """实现 `_extract_file_content` 的业务逻辑。"""
+        from src.model import model_manager
+        from src.tool.server import tcp
 
         info = get_file_info(file)
 
         # 处理文件与路径。
-        input_payload = {
+        input_payload: dict[str, Any] = {
             "name": "mdify",
             "input": {
                 "file_path": file,
@@ -373,9 +334,16 @@ class Agent(BaseModel):
         return enhanced_task
 
     async def _get_agent_context(
-        self, task: str, step_number: int = 0, ctx: SessionContext = None, **kwargs
+        self,
+        task: str,
+        step_number: int = 0,
+        ctx: SessionContext | None = None,
+        **kwargs: Any,
     ) -> dict[str, Any]:
         """实现 `_get_agent_context` 的业务逻辑。"""
+        from src.memory.server import memory_manager
+        from src.tool.server import tcp
+
         task = f"<task>{task}</task>"
 
         step_info_description = (
@@ -447,7 +415,10 @@ class Agent(BaseModel):
         if self.use_todo:
             todo = "<todo>"
             todo_tool = await tcp.get("todo")
-            todo_contents = todo_tool.get_todo_content(ctx=ctx)
+            todo_renderer = getattr(todo_tool, "get_todo_content", None)
+            if not callable(todo_renderer):
+                raise RuntimeError("todo 工具未提供 get_todo_content 方法")
+            todo_contents = todo_renderer(ctx=ctx)
             todo += todo_contents
             todo += "</todo>"
         else:
@@ -470,11 +441,14 @@ class Agent(BaseModel):
         self, ctx: SessionContext, **kwargs
     ) -> dict[str, Any]:
         """实现 `_get_environment_context` 的业务逻辑。"""
+        from src.environment.server import ecp
 
         environment_context = "<environment_context>"
         # 配置相关参数。
         for env_name in config.env_names:
             env_info = await ecp.get_info(env_name)
+            if env_info is None:
+                raise RuntimeError(f"环境不存在：{env_name}")
             rule_string = env_info.rules
             rule_string = dedent(f"""
                 <rules>
@@ -483,9 +457,11 @@ class Agent(BaseModel):
             """)
 
             env_state = await ecp.get_state(env_name, ctx=ctx)
+            if env_state is None:
+                raise RuntimeError(f"无法读取环境状态：{env_name}")
             state_string = "<state>"
-            state_string += env_state["state"]
-            extra = env_state["extra"]
+            state_string += str(env_state.get("state", ""))
+            extra = env_state.get("extra") or {}
 
             if "screenshots" in extra:
                 for screenshot in extra["screenshots"]:
@@ -509,6 +485,8 @@ class Agent(BaseModel):
 
     async def _get_tool_context(self, ctx: SessionContext, **kwargs) -> dict[str, Any]:
         """实现 `_get_tool_context` 的业务逻辑。"""
+        from src.tool.server import tcp
+
         tool_context = "<tool_context>"
 
         tool_context += dedent(f"""
@@ -524,6 +502,8 @@ class Agent(BaseModel):
 
     async def _get_skill_context(self, ctx: SessionContext, **kwargs) -> dict[str, Any]:
         """实现 `_get_skill_context` 的业务逻辑。"""
+        from src.skill.server import scp
+
         skill_content = await scp.get_context()
         if not skill_content:
             skill_context = "<skill_context>[No skills loaded.]</skill_context>\n"
@@ -537,6 +517,7 @@ class Agent(BaseModel):
         self, task: str, ctx: SessionContext, **kwargs
     ) -> list[Message]:
         """实现 `_get_messages` 的业务逻辑。"""
+        from src.prompt.server import prompt_manager
 
         system_modules = {"max_tools": self.max_tools, "workdir": self.workdir}
         agent_message_modules = {"task": task}

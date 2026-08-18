@@ -322,7 +322,7 @@ class PromptContextManager(BaseModel):
 
                 for version_data in versions.values():
                     # 配置相关参数。
-                    prompt_config = PromptConfig.model_validate(version_data)
+                    prompt_config = PromptConfig.from_dict(version_data)
                     version = prompt_config.version
                     version_map[version] = prompt_config
 
@@ -687,7 +687,7 @@ class PromptContextManager(BaseModel):
         new_config_dict["instance"] = None
 
         # 加载所需数据。
-        new_config = PromptConfig.model_validate(new_config_dict)
+        new_config = PromptConfig.from_dict(new_config_dict)
 
         # 注册相关组件。
         self._prompt_configs[new_name] = new_config
@@ -749,7 +749,7 @@ class PromptContextManager(BaseModel):
 
         # 创建所需对象。
         # 加载所需数据。
-        restored_config = PromptConfig.model_validate(version_config.model_dump())
+        restored_config = PromptConfig.from_dict(version_config.model_dump())
 
         # 配置相关参数。
         self._prompt_configs[prompt_name] = restored_config
@@ -908,7 +908,7 @@ class PromptContextManager(BaseModel):
                                 config_dict["version"] = version_str
 
                             # 配置相关参数。
-                            prompt_config = PromptConfig.model_validate(config_dict)
+                            prompt_config = PromptConfig.from_dict(config_dict)
 
                             version_configs.append(prompt_config)
 

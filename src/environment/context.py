@@ -382,7 +382,7 @@ class EnvironmentContextManager(BaseModel):
                 current_config: EnvironmentConfig | None = None  # 配置相关参数。
 
                 for version_data in versions.values():
-                    env_config = EnvironmentConfig.model_validate(version_data)
+                    env_config = EnvironmentConfig.from_dict(version_data)
                     version = env_config.version
                     version_map[version] = env_config
 
@@ -1153,9 +1153,7 @@ class EnvironmentContextManager(BaseModel):
                                 config_dict["version"] = version_str
 
                             try:
-                                env_config = EnvironmentConfig.model_validate(
-                                    config_dict
-                                )
+                                env_config = EnvironmentConfig.from_dict(config_dict)
                                 version_configs.append(env_config)
                             except Exception as e:
                                 logger.warning(

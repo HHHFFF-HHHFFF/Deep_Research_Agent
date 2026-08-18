@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from src.dynamic import dynamic_manager
 from src.logger import logger
-from src.message import ContentPartText, HumanMessage, Message, SystemMessage
+from src.message import HumanMessage, Message, SystemMessage
 from src.optimizer.types import Variable
 
 
@@ -60,21 +60,21 @@ class Prompt(BaseModel):
         """获取与 `get_variable` 对应的数据或状态。"""
         if self.prompt_variable is None or reload:
             await self._load_prompt_variable()
+        if self.prompt_variable is None:
+            raise RuntimeError("提示词变量加载完成后仍为空")
         return self.prompt_variable
 
     async def get_trainable_variable(self) -> dict[str, Variable]:
         """获取与 `get_trainable_variable` 对应的数据或状态。"""
-        if self.prompt_variable is None:
-            await self._load_prompt_variable()
-        return self.prompt_variable.get_trainable_variables()
+        prompt_variable = await self.get_variable()
+        return prompt_variable.get_trainable_variables()
 
     async def get_message(
         self, modules: dict[str, Any] | None = None, reload: bool = False, **kwargs
     ):
         """获取与 `get_message` 对应的数据或状态。"""
         # 加载所需数据。
-        if self.prompt_variable is None or reload:
-            await self._load_prompt_variable()
+        prompt_variable = await self.get_variable(reload=reload)
 
         is_system_prompt = self.type == "system_prompt"
 
@@ -85,23 +85,20 @@ class Prompt(BaseModel):
         try:
             # 创建所需对象。
             if modules is None or len(modules) == 0:
-                modules = self.prompt_variable.get_modules()
+                modules = prompt_variable.get_modules()
             else:
                 # 说明相关实现细节。
-                variable_modules = self.prompt_variable.get_modules()
+                variable_modules = prompt_variable.get_modules()
                 modules = {**variable_modules, **modules}
 
-            prompt_str = self.prompt_variable.render(modules)
+            prompt_str = prompt_variable.render(modules)
 
             # 组装并返回结果。
             if is_system_prompt:
                 self.message = SystemMessage(content=prompt_str)
             else:
                 # 说明相关实现细节。
-                contents = [
-                    ContentPartText(text=prompt_str),
-                ]
-                self.message = HumanMessage(content=contents)
+                self.message = HumanMessage(content=prompt_str)
 
             return self.message
 
@@ -189,49 +186,12 @@ class PromptConfig(BaseModel):
         return result
 
     @classmethod
-    def model_validate(cls, data: dict[str, Any]) -> "PromptConfig":
-        """实现 `model_validate` 的业务逻辑。"""
-        name = data.get("name")
-        prompt_type = data.get("type")
-        description = data.get("description")
-        version = data.get("version", "1.0.0")
-        template = data.get("template", "")
-        variables = data.get("variables")
-        metadata = data.get("metadata", {})
-        config_dict = data.get("config", {})
-
-        cls_ = None
-        code = data.get("code")
-        if code:
-            class_name = dynamic_manager.extract_class_name_from_code(code)
-            if class_name:
-                try:
-                    cls_ = dynamic_manager.load_class(
-                        code, class_name=class_name, base_class=Prompt, context="prompt"
-                    )
-                except Exception as e:
-                    logger.warning(f"Failed to load prompt class from code: {e}")
-                    cls_ = None
-            else:
-                cls_ = None
-        else:
-            cls_ = None
-
-        instance = data.get("instance", None)
-
-        return cls(
-            name=name,
-            type=prompt_type,
-            description=description,
-            version=version,
-            template=template,
-            variables=variables,
-            cls=cls_,
-            instance=instance,
-            config=config_dict,
-            metadata=metadata,
-            code=code,
-        )
+    def from_dict(cls, data: dict[str, Any]) -> "PromptConfig":
+        """从持久化字典恢复提示词配置，不执行其中携带的代码。"""
+        payload = dict(data)
+        payload["cls"] = None
+        payload["instance"] = None
+        return cls.model_validate(payload)
 
     def __str__(self):
         return f"PromptConfig(name={self.name}, type={self.type}, description={self.description}, version={self.version})"
