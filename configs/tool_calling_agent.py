@@ -1,6 +1,17 @@
 from mmengine.config import read_base
 with read_base():
-    from .base import memory_config, window_size, max_tokens
+    from .base import (
+        embedding_fallback_models,
+        embedding_model_id,
+        embedding_model_name,
+        embedding_provider,
+        fallback_models,
+        max_tokens,
+        model_id,
+        model_name,
+        model_provider,
+        window_size,
+    )
     from .agents.tool_calling import tool_calling_agent
     from .tools.deep_researcher import deep_researcher_tool
     from .tools.deep_analyzer import deep_analyzer_tool
@@ -16,8 +27,7 @@ log_path = "agent.log"
 
 use_local_proxy = True
 version = "0.1.0"
-model_name = "openrouter/gemini-3-flash-preview"
-# 处理模型调用。
+# `model_name` 由基础配置统一生成，不在场景配置中写死厂商。
 
 env_names = [
     "file_system"
@@ -51,13 +61,13 @@ todo_tool.update(
 )
 # 配置相关参数。
 deep_researcher_tool.update(
-    model_name="openrouter/o3",
+    model_name=model_name,
     base_dir="tool/deep_researcher",
 )
 
 # 配置相关参数。
 deep_analyzer_tool.update(
-    model_name="openrouter/o3",
+    model_name=model_name,
     base_dir="tool/deep_analyzer",
     require_grad=False,
 )

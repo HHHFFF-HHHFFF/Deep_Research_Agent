@@ -1,44 +1,53 @@
+import json
 import os
 import sys
-import json
+
 from dotenv import load_dotenv
+
 load_dotenv(verbose=True)
 
-from pathlib import Path
 import argparse
-from mmengine import DictAction
 import asyncio
+from pathlib import Path
+
+from mmengine import DictAction
 
 root = str(Path(__file__).resolve().parents[1])
 sys.path.append(root)
 
-from src.config import config
-from src.logger import logger
-from src.model import model_manager
-from src.version import version_manager
-from src.prompt import prompt_manager
-from src.memory import memory_manager
-from src.tool import tcp
-from src.skill import scp
-from src.environment import ecp
 from src.agent import acp
+from src.config import config
+from src.environment import ecp
+from src.logger import logger
+from src.memory import memory_manager
+from src.model import model_manager
+from src.prompt import prompt_manager
 from src.session.types import SessionContext
-from src.utils import generate_unique_id
+from src.skill import scp
+from src.tool import tcp
+from src.version import version_manager
+
 
 def parse_args():
-    parser = argparse.ArgumentParser(description='main')
-    parser.add_argument("--config", default=os.path.join(root, "configs", "tool_calling_agent.py"), help="config file path")
+    parser = argparse.ArgumentParser(description="运行深度研究智能体")
+    parser.add_argument("--config", default=os.path.join(root, "configs", "tool_calling_agent.py"), help="配置文件路径")
+    parser.add_argument("--provider", dest="model_provider", help="聊天模型提供方，例如 qwen 或 deepseek")
+    parser.add_argument("--model", dest="model_id", help="聊天模型标识，例如 qwen-plus")
+    parser.add_argument(
+        "--fallback-model",
+        dest="fallback_models",
+        action="append",
+        help="备用模型，使用“提供方/模型”格式，可重复传入",
+    )
+    parser.add_argument("--embedding-provider", help="向量模型提供方")
+    parser.add_argument("--embedding-model", dest="embedding_model_id", help="向量模型标识")
 
     parser.add_argument(
         '--cfg-options',
         nargs='+',
         action=DictAction,
-        help='override some settings in the used config, the key-value pair '
-        'in xxx=yyy format will be merged into config file. If the value to '
-        'be overwritten is a list, it should be like key="[a,b]" or key=a,b '
-        'It also allows nested list/tuple values, e.g. key="[(a,b),(c,d)]" '
-        'Note that the quotation marks are necessary and that no white space '
-        'is allowed.')
+        help="使用 key=value 形式覆盖配置项",
+    )
     args = parser.parse_args()
     return args
 
@@ -51,7 +60,12 @@ async def main():
 
     # 初始化相关状态。
     logger.info("| 🧠 Initializing model manager...")
-    await model_manager.initialize()
+    await model_manager.initialize(
+        primary_model=config.model_name,
+        fallback_models=config.fallback_models,
+        embedding_model=config.embedding_model_name,
+        embedding_fallback_models=config.embedding_fallback_models,
+    )
     logger.info(f"| ✅ Model manager initialized: {await model_manager.list()}")
 
     # 初始化相关状态。
@@ -91,7 +105,7 @@ async def main():
     logger.info(f"| ✅ Version manager initialized: {json.dumps(await version_manager.list(), indent=4)}")
 
     # 检索所需信息。
-    task = "调研大模型 Agent 的提示注入风险与主流防护方法，并生成带来源的中文报告。"
+    task = "调研 RAG 系统中的幻觉问题，并生成带来源的中文报告。"
     files = []
 
     logger.info(f"| 📋 Task: {task}")
