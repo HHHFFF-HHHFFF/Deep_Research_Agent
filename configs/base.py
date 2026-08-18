@@ -7,7 +7,7 @@ use_local_proxy = False
 model_provider = "qwen"
 model_id = "qwen-plus"
 model_name = model_id if "/" in model_id else f"{model_provider}/{model_id}"
-fallback_models = []
+fallback_models: list[str] = []
 
 embedding_provider = "qwen"
 embedding_model_id = "text-embedding-v4"
@@ -16,7 +16,7 @@ embedding_model_name = (
     if "/" in embedding_model_id
     else f"{embedding_provider}/{embedding_model_id}"
 )
-embedding_fallback_models = []
+embedding_fallback_models: list[str] = []
 
 # 配置相关参数。
 memory_config = {

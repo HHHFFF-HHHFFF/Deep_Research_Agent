@@ -21,11 +21,9 @@ class VersionManager(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="allow")
 
     base_dir: str = Field(
-        default=None, description="The base directory to use for the version histories"
+        default="", description="The base directory to use for the version histories"
     )
-    save_path: str = Field(
-        default=None, description="The path to save version histories"
-    )
+    save_path: str = Field(default="", description="The path to save version histories")
 
     def __init__(
         self, base_dir: str | None = None, save_path: str | None = None, **kwargs
@@ -92,7 +90,7 @@ class VersionManager(BaseModel):
 
     async def list(self) -> dict[str, dict[str, list[str]]]:
         """实现 `list` 的业务逻辑。"""
-        result = {}
+        result: dict[str, dict[str, list[str]]] = {}
         for component_type, histories in self._version_histories.items():
             result[component_type] = {}
             for name, version_history in histories.items():
@@ -211,7 +209,7 @@ class VersionManager(BaseModel):
             os.makedirs(os.path.dirname(file_path), exist_ok=True)
 
             # 转换并规范化数据。
-            save_data = {
+            save_data: dict[str, Any] = {
                 "component_type": {},
                 "metadata": {"saved_at": datetime.now(timezone.utc).isoformat()},
             }

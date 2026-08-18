@@ -24,7 +24,7 @@ def get_environment_model_options() -> dict[str, object]:
         "EMBEDDING_PROVIDER": "embedding_provider",
         "EMBEDDING_MODEL": "embedding_model_id",
     }
-    options = {
+    options: dict[str, object] = {
         config_key: value
         for env_key, config_key in scalar_mapping.items()
         if (value := os.getenv(env_key))

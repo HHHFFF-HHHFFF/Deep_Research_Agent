@@ -12,19 +12,20 @@ def format_size(size_bytes: int) -> str:
         return "0 B"
 
     size_names = ["B", "KB", "MB", "GB", "TB"]
+    size_value = float(size_bytes)
     i = 0
-    while size_bytes >= 1024 and i < len(size_names) - 1:
-        size_bytes /= 1024.0
+    while size_value >= 1024 and i < len(size_names) - 1:
+        size_value /= 1024.0
         i += 1
 
-    return f"{size_bytes:.1f} {size_names[i]}"
+    return f"{size_value:.1f} {size_names[i]}"
 
 
 def get_file_info(file_path: str) -> dict[str, Any]:
     """获取与 `get_file_info` 对应的数据或状态。"""
     abs_path = os.path.abspath(file_path)
 
-    info = {}
+    info: dict[str, Any] = {}
     file_stats = os.stat(abs_path)
 
     info["path"] = abs_path
@@ -48,7 +49,7 @@ def get_file_info(file_path: str) -> dict[str, Any]:
 
 class FileLock(metaclass=Singleton):
     def __init__(self):
-        self._locks = {}
+        self._locks: dict[str, asyncio.Lock] = {}
 
     def get_lock(self, key: str) -> asyncio.Lock:
         # 转换并规范化数据。
@@ -62,7 +63,7 @@ class FileLock(metaclass=Singleton):
 
 
 class _FileLockContext:
-    def __init__(self, lock):
+    def __init__(self, lock: asyncio.Lock):
         self._lock = lock
 
     async def __aenter__(self):

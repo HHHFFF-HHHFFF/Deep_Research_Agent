@@ -37,7 +37,7 @@ tool_names = [
     "deep_researcher",
     "reporter",
 ]
-skill_names = []
+skill_names: list[str] = []
 
 # 配置相关参数。
 mdify_tool.update(

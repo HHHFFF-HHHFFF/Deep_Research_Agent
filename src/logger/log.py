@@ -1,8 +1,10 @@
 import logging
 import threading
+from collections.abc import Mapping
 from contextlib import ExitStack
 from enum import IntEnum
 from queue import Empty, Full, Queue
+from types import TracebackType
 from typing import Any
 
 from rich.console import Console, Group
@@ -40,7 +42,7 @@ class Logger(logging.Logger):
         )
 
         # 执行异步任务。
-        self._log_queue: Queue | None = None
+        self._log_queue: Queue[str | None] | None = None
         self._log_thread: threading.Thread | None = None
         self._stop_event = threading.Event()
         self._log_path: str | None = None
@@ -49,18 +51,21 @@ class Logger(logging.Logger):
 
     def _log_writer_thread(self, log_path: str):
         """实现 `_log_writer_thread` 的业务逻辑。"""
+        log_queue = self._log_queue
+        if log_queue is None:
+            return
         with open(log_path, "a", encoding="utf-8") as log_file:
             while not self._stop_event.is_set():
                 try:
                     # 说明相关实现细节。
-                    log_entry = self._log_queue.get(timeout=0.1)
+                    log_entry = log_queue.get(timeout=0.1)
                     if log_entry is None:  # 说明相关实现细节。
                         break
 
                     # 持久化相关数据。
                     log_file.write(log_entry)
                     log_file.flush()  # 持久化相关数据。
-                    self._log_queue.task_done()
+                    log_queue.task_done()
 
                 except Empty:
                     continue
@@ -203,16 +208,41 @@ class Logger(logging.Logger):
         super().debug(msg, *args, **kwargs)
         self._enqueue_log("debug", msg, *args, **kwargs)
 
-    def log(self, msg: Any | None = None, level: LogLevel = LogLevel.INFO, **kwargs):
-        """实现 `log` 的业务逻辑。"""
-        if isinstance(msg, str):
-            self.info(msg, **kwargs)
-        elif isinstance(msg, (Group, Panel, Rule, Syntax, Table, Tree)):
-            # 说明相关实现细节。
-            if self.console:
-                self.console.print(msg, **kwargs)
-            if self.file_console:
-                self.file_console.print(msg, **kwargs)
+    def log(
+        self,
+        level: int,
+        msg: object,
+        *args: object,
+        exc_info: (
+            bool
+            | tuple[type[BaseException], BaseException, TracebackType | None]
+            | tuple[None, None, None]
+            | BaseException
+            | None
+        ) = None,
+        stack_info: bool = False,
+        stacklevel: int = 1,
+        extra: Mapping[str, object] | None = None,
+    ) -> None:
+        """按照标准库日志接口记录普通消息。"""
+        super().log(
+            level,
+            msg,
+            *args,
+            exc_info=exc_info,
+            stack_info=stack_info,
+            stacklevel=stacklevel,
+            extra=extra,
+        )
+
+    def render(
+        self, content: Group | Panel | Rule | Syntax | Table | Tree, **kwargs: Any
+    ) -> None:
+        """向终端和日志文件渲染 Rich 内容。"""
+        if hasattr(self, "console"):
+            self.console.print(content, **kwargs)
+        if hasattr(self, "file_console"):
+            self.file_console.print(content, **kwargs)
 
     def shutdown(self):
         """实现 `shutdown` 的业务逻辑。"""

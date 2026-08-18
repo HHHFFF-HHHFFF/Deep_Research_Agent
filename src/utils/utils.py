@@ -396,7 +396,8 @@ def decode_file_base64(data_base64: str) -> bytes:
 
 def make_file_url(file_path: str) -> str:
     mime_type, _ = mimetypes.guess_type(file_path)
-    return f"data:{mime_type.lower()};base64,{encode_file_base64(file_path)}"
+    normalized_mime_type = (mime_type or "application/octet-stream").lower()
+    return f"data:{normalized_mime_type};base64,{encode_file_base64(file_path)}"
 
 
 def make_init_file(folder: str | Path):
