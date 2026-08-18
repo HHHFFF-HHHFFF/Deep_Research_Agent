@@ -1,7 +1,8 @@
 deep_researcher_tool = dict(
     base_dir = "workdir/tool/deep_researcher",
-    model_name = "openrouter/gemini-3-flash-preview",
-    use_llm_search = True,
-    search_llm_models = ["openrouter/gemini-3-flash-preview-plugins"],
+    model_name = "qwen/qwen-plus",
+    # 使用项目自己的网页检索工具，避免绑定某个厂商的内置搜索插件。
+    use_llm_search = False,
+    search_llm_models = [],
     require_grad = False
 )

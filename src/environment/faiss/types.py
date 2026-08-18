@@ -37,7 +37,10 @@ class FaissConfig(BaseModel):
     """定义 `FaissConfig`，封装相关数据与行为。"""
     base_dir: str = Field(..., description="Base directory for FAISS storage")
     index_name: str = Field("index", description="Name of the FAISS index")
-    model_name: str = Field("text-embedding-ada-002", description="Embedding model to use")
+    model_name: Optional[str] = Field(
+        default=None,
+        description="向量模型；为空时使用模型管理器的独立 Embedding 配置。",
+    )
     distance_strategy: str = Field("cosine", description="Distance strategy (euclidean, cosine, max_inner_product)")
     normalize_L2: bool = Field(False, description="Whether to normalize L2")
     max_documents: int = Field(1000000, description="Maximum number of documents")

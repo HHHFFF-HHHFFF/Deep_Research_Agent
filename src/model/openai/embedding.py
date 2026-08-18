@@ -1,5 +1,6 @@
 from collections.abc import Mapping
-from typing import Any, Optional, Union, List, Dict
+from typing import Any
+
 import httpx
 
 try:
@@ -15,9 +16,9 @@ except ImportError:
 
 from pydantic import BaseModel, ConfigDict
 
-from src.message.types import Message, HumanMessage, SystemMessage, ContentPartText
-from src.model.types import LLMResponse
 from src.logger import logger
+from src.message.types import ContentPartText, HumanMessage, Message, SystemMessage
+from src.model.types import LLMExtra, LLMResponse
 
 
 class EmbeddingOpenAI(BaseModel):
@@ -26,24 +27,24 @@ class EmbeddingOpenAI(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True, extra="allow")
 
     # 配置相关参数。
-    model: Union[ChatModel, str] = "text-embedding-3-small"
+    model: ChatModel | str = "text-embedding-3-small"
 
     # 处理输入参数。
-    api_key: Optional[str] = None
-    organization: Optional[str] = None
-    project: Optional[str] = None
-    base_url: Optional[Union[str, httpx.URL]] = None
-    websocket_base_url: Optional[Union[str, httpx.URL]] = None
-    timeout: Optional[Union[float, httpx.Timeout]] = None
+    api_key: str | None = None
+    organization: str | None = None
+    project: str | None = None
+    base_url: str | httpx.URL | None = None
+    websocket_base_url: str | httpx.URL | None = None
+    timeout: float | httpx.Timeout | None = None
     max_retries: int = 5
-    default_headers: Optional[Mapping[str, str]] = None
-    default_query: Optional[Mapping[str, object]] = None
-    http_client: Optional[httpx.AsyncClient] = None
+    default_headers: Mapping[str, str] | None = None
+    default_query: Mapping[str, object] | None = None
+    http_client: httpx.AsyncClient | None = None
     _strict_response_validation: bool = False
 
     # 处理输入参数。
-    dimensions: Optional[int] = None  # 处理模型调用。
-    encoding_format: Optional[str] = None  # 说明相关实现细节。
+    dimensions: int | None = None  # 处理模型调用。
+    encoding_format: str | None = None  # 说明相关实现细节。
 
     @property
     def provider(self) -> str:
@@ -85,7 +86,7 @@ class EmbeddingOpenAI(BaseModel):
     def name(self) -> str:
         return str(self.model)
 
-    def _extract_text_from_messages(self, messages: List[Message]) -> List[str]:
+    def _extract_text_from_messages(self, messages: list[Message]) -> list[str]:
         """实现 `_extract_text_from_messages` 的业务逻辑。"""
         texts = []
 
@@ -102,11 +103,11 @@ class EmbeddingOpenAI(BaseModel):
 
     async def _build_params(
         self,
-        messages: List[Message],
-        dimensions: Optional[int] = None,
-        encoding_format: Optional[str] = None,
+        messages: list[Message],
+        dimensions: int | None = None,
+        encoding_format: str | None = None,
         **kwargs: Any,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """实现 `_build_params` 的业务逻辑。"""
         # 说明相关实现细节。
         texts = self._extract_text_from_messages(messages)
@@ -114,7 +115,7 @@ class EmbeddingOpenAI(BaseModel):
             raise ValueError("No text content found in messages")
 
         # 创建所需对象。
-        params: Dict[str, Any] = {
+        params: dict[str, Any] = {
             "model": self.model,
             "input": texts if len(texts) > 1 else texts[0],  # 说明相关实现细节。
         }
@@ -140,7 +141,7 @@ class EmbeddingOpenAI(BaseModel):
 
     async def _call_model(
         self,
-        input_text: Union[str, List[str]],
+        input_text: str | list[str],
         **params: Any,
     ) -> Any:
         """实现 `_call_model` 的业务逻辑。"""
@@ -178,14 +179,26 @@ class EmbeddingOpenAI(BaseModel):
             message = f"{len(embeddings)} embedding vectors"
 
         # 组装并返回结果。
-        extra = {
-            "raw_response": response.model_dump() if hasattr(response, 'model_dump') else str(response),
-            "embeddings": embeddings,
-            "usage": {
-                "prompt_tokens": response.usage.prompt_tokens if hasattr(response, 'usage') and hasattr(response.usage, 'prompt_tokens') else None,
-                "total_tokens": response.usage.total_tokens if hasattr(response, 'usage') and hasattr(response.usage, 'total_tokens') else None,
-            } if hasattr(response, 'usage') else None,
-        }
+        extra = LLMExtra(
+            data={
+                "raw_response": response.model_dump()
+                if hasattr(response, "model_dump")
+                else str(response),
+                "embeddings": embeddings,
+                "usage": {
+                    "prompt_tokens": response.usage.prompt_tokens
+                    if hasattr(response, "usage")
+                    and hasattr(response.usage, "prompt_tokens")
+                    else None,
+                    "total_tokens": response.usage.total_tokens
+                    if hasattr(response, "usage")
+                    and hasattr(response.usage, "total_tokens")
+                    else None,
+                }
+                if hasattr(response, "usage")
+                else None,
+            }
+        )
 
         return LLMResponse(
             success=True,
@@ -195,9 +208,9 @@ class EmbeddingOpenAI(BaseModel):
 
     async def __call__(
         self,
-        messages: List[Message],
-        dimensions: Optional[int] = None,
-        encoding_format: Optional[str] = None,
+        messages: list[Message],
+        dimensions: int | None = None,
+        encoding_format: str | None = None,
         **kwargs: Any,
     ) -> LLMResponse:
         """执行组件调用并返回结果。"""
@@ -232,7 +245,7 @@ class EmbeddingOpenAI(BaseModel):
             logger.error(f"API connection error: {e}")
             return LLMResponse(
                 success=False,
-                message=f"API connection error: {str(e)}",
+                message=f"API connection error: {e!s}",
                 extra={"error": str(e), "model": self.name}
             )
         except APIStatusError as e:
@@ -246,6 +259,6 @@ class EmbeddingOpenAI(BaseModel):
             logger.error(f"Unexpected error: {e}")
             return LLMResponse(
                 success=False,
-                message=f"Unexpected error: {str(e)}",
+                message=f"Unexpected error: {e!s}",
                 extra={"error": str(e), "model": self.name}
             )

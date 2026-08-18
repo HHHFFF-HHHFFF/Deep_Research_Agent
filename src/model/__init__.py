@@ -1,4 +1,5 @@
-from .manager import ModelManager, model_manager
+from .runtime_manager import ModelManager, model_manager
+from .settings import ModelRuntimeSettings, ProviderSettings
 from .types import ModelConfig, LLMResponse, LLMExtra
 
 __all__ = [
@@ -7,4 +8,6 @@ __all__ = [
     "ModelConfig",
     "LLMResponse",
     "LLMExtra",
+    "ModelRuntimeSettings",
+    "ProviderSettings",
 ]

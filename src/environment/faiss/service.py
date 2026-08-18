@@ -2,32 +2,29 @@
 
 import asyncio
 import pickle
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Union, Tuple
-import os
 import uuid
+from pathlib import Path
+from typing import Any
 
 import numpy as np
 
-from src.logger import logger
-from src.environment.types import ActionResult
 from src.environment.faiss.exceptions import (
-    FaissIndexError,
-    FaissDocumentError,
-    FaissSearchError,
-    FaissStorageError,
     FaissConfigurationError,
-    FaissEmbeddingError
+    FaissEmbeddingError,
+    FaissIndexError,
+    FaissStorageError,
 )
 from src.environment.faiss.types import (
-    FaissSearchRequest,
     FaissAddRequest,
+    FaissConfig,
     FaissDeleteRequest,
     FaissIndexInfo,
-    FaissConfig
+    FaissSearchRequest,
 )
-from src.model import model_manager
+from src.environment.types import ActionResult
+from src.logger import logger
 from src.message import HumanMessage
+from src.model import model_manager
 
 
 def dependable_faiss_import():
@@ -45,7 +42,7 @@ def dependable_faiss_import():
 
 class Document:
     """定义 `Document`，封装相关数据与行为。"""
-    def __init__(self, page_content: str, metadata: Optional[Dict[str, Any]] = None):
+    def __init__(self, page_content: str, metadata: dict[str, Any] | None = None):
         self.page_content = page_content
         self.metadata = metadata or {}
 
@@ -55,26 +52,27 @@ class FaissService:
 
     def __init__(
         self,
-        base_dir: Union[str, Path],
-        model_name: Optional[str] = None,
-        config: Optional[FaissConfig] = None
+        base_dir: str | Path,
+        model_name: str | None = None,
+        config: FaissConfig | None = None
     ):
         """初始化实例。"""
         self.base_dir = Path(base_dir)
         self.base_dir.mkdir(parents=True, exist_ok=True)
 
         self.config = config or FaissConfig(base_dir=str(base_dir))
+        # 聊天模型与向量模型分开配置；未显式指定时由模型管理器路由。
         self.model_name = model_name or self.config.model_name
 
         # 说明相关实现细节。
         self.faiss = dependable_faiss_import()
-        self.index: Optional[Any] = None
-        self.docstore: Dict[str, Document] = {}  # 说明相关实现细节。
-        self.id_to_index: Dict[str, int] = {}  # 说明相关实现细节。
-        self.index_to_id: Dict[int, str] = {}  # 说明相关实现细节。
+        self.index: Any | None = None
+        self.docstore: dict[str, Document] = {}  # 说明相关实现细节。
+        self.id_to_index: dict[str, int] = {}  # 说明相关实现细节。
+        self.index_to_id: dict[int, str] = {}  # 说明相关实现细节。
 
         self._operation_count = 0
-        self._embedding_dimension: Optional[int] = None
+        self._embedding_dimension: int | None = None
         self._index_creation_lock = asyncio.Lock()  # 执行异步任务。
 
         # 初始化相关状态。
@@ -104,14 +102,17 @@ class FaissService:
         try:
             test_message = [HumanMessage(content="test")]
             response = await model_manager.aembedding(
-                model=self.model_name,
+                model=self.model_name or model_manager.embedding_model_name,
                 messages=test_message
             )
 
             if not response.success:
                 raise FaissConfigurationError(f"Failed to get embedding dimension: {response.message}")
 
-            embedding = response.extra["embeddings"]
+            response_data = response.extra.data if response.extra else None
+            if not response_data or "embeddings" not in response_data:
+                raise FaissEmbeddingError("Embedding response is missing vectors")
+            embedding = response_data["embeddings"]
 
             # 处理模型调用。
             # 组装并返回结果。
@@ -146,7 +147,7 @@ class FaissService:
         try:
             # 更新相关状态。
             # 创建所需对象。
-            logger.info(f"| 🔍 FAISS index will be created on first document addition")
+            logger.info("| 🔍 FAISS index will be created on first document addition")
 
         except Exception as e:
             raise FaissIndexError(f"Failed to create FAISS index: {e}")
@@ -194,19 +195,22 @@ class FaissService:
         except Exception as e:
             raise FaissIndexError(f"Failed to load FAISS index: {e}")
 
-    async def _get_embeddings(self, texts: List[str]) -> np.ndarray:
+    async def _get_embeddings(self, texts: list[str]) -> np.ndarray:
         """实现 `_get_embeddings` 的业务逻辑。"""
         try:
             messages = [HumanMessage(content=text) for text in texts]
             response = await model_manager.aembedding(
-                model=self.model_name,
+                model=self.model_name or model_manager.embedding_model_name,
                 messages=messages
             )
 
             if not response.success:
                 raise FaissEmbeddingError(f"Failed to get embeddings: {response.message}")
 
-            embeddings = response.extra["embeddings"]
+            response_data = response.extra.data if response.extra else None
+            if not response_data or "embeddings" not in response_data:
+                raise FaissEmbeddingError("Embedding response is missing vectors")
+            embeddings = response_data["embeddings"]
 
             # 处理模型调用。
             # 组装并返回结果。
@@ -321,7 +325,7 @@ class FaissService:
         except Exception as e:
             return ActionResult(
                 success=False,
-                message=f"Failed to add documents: {str(e)}",
+                message=f"Failed to add documents: {e!s}",
                 extra={"error": str(e)}
             )
 
@@ -419,7 +423,7 @@ class FaissService:
         except Exception as e:
             return ActionResult(
                 success=False,
-                message=f"Failed to search documents: {str(e)}",
+                message=f"Failed to search documents: {e!s}",
                 extra={"error": str(e), "query": request.query}
             )
 
@@ -460,7 +464,7 @@ class FaissService:
         except Exception as e:
             return ActionResult(
                 success=False,
-                message=f"Failed to delete documents: {str(e)}",
+                message=f"Failed to delete documents: {e!s}",
                 extra={"error": str(e), "requested_ids": request.ids}
             )
 
@@ -486,7 +490,7 @@ class FaissService:
 
             return ActionResult(
                 success=True,
-                message=f"FAISS index information retrieved successfully",
+                message="FAISS index information retrieved successfully",
                 extra={
                     "index_info": index_info.model_dump(),
                     "total_documents": total_documents,
@@ -500,7 +504,7 @@ class FaissService:
         except Exception as e:
             return ActionResult(
                 success=False,
-                message=f"Failed to get index info: {str(e)}",
+                message=f"Failed to get index info: {e!s}",
                 extra={"error": str(e)}
             )
 

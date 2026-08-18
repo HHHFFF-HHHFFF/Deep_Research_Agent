@@ -12,8 +12,6 @@ from rich.table import Table
 from rich.tree import Tree
 from rich.logging import RichHandler
 
-from src.utils import Singleton
-
 YELLOW_HEX = "#d4b702"
 
 class LogLevel(IntEnum):
@@ -25,7 +23,7 @@ class LogLevel(IntEnum):
     INFO = logging.INFO
     DEBUG = logging.DEBUG
 
-class Logger(logging.Logger, metaclass=Singleton):
+class Logger(logging.Logger):
     """定义 `Logger`，封装相关数据与行为。"""
     def __init__(self, name="logger", level=logging.INFO):
         # 初始化相关状态。

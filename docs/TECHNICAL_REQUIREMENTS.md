@@ -37,14 +37,14 @@
 
 提供方必须通过环境变量读取密钥和服务地址。千问使用 `DASHSCOPE_API_KEY` 与 `QWEN_BASE_URL`；DeepSeek 使用 `DEEPSEEK_API_KEY` 与 `DEEPSEEK_API_BASE`。
 
-下一阶段目标配置：
+当前支持的配置结构：
 
 ```yaml
 models:
   default: qwen/qwen-plus
   fallback:
     - deepseek/deepseek-v4-flash
-    - openrouter/gemini-3-flash-preview
+  embedding: qwen/text-embedding-v4
 
 providers:
   qwen:
@@ -58,6 +58,8 @@ providers:
 ```
 
 不得使用已经停用的 DeepSeek 别名 `deepseek-chat` 和 `deepseek-reasoner`。模型标识必须保留在配置中，因为提供方的模型目录会持续变化。
+
+聊天模型与 Embedding 模型必须独立配置。DeepSeek 只作为聊天模型使用时，RAG 可继续选择 Qwen `text-embedding-v4` 或 OpenAI Embedding。
 
 ## 三、研究流水线
 
