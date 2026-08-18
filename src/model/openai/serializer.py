@@ -1,6 +1,6 @@
-from typing import Any, overload
+from typing import TYPE_CHECKING, Any, overload
 
-try:
+if TYPE_CHECKING:
     from openai.types.chat import (
         ChatCompletionAssistantMessageParam,
         ChatCompletionContentPartImageParam,
@@ -17,28 +17,47 @@ try:
     from openai.types.chat.chat_completion_message_function_tool_call_param import (
         Function as OpenAIFunction,
     )
-except ImportError:
-    # 执行回退或重试逻辑。
-    ChatCompletionAssistantMessageParam = dict
-    ChatCompletionContentPartImageParam = dict
-    ChatCompletionContentPartRefusalParam = dict
-    ChatCompletionContentPartTextParam = dict
-    ChatCompletionMessageFunctionToolCallParam = dict
-    ChatCompletionMessageParam = dict
-    ChatCompletionSystemMessageParam = dict
-    ChatCompletionUserMessageParam = dict
-    OpenAIImageURL = dict
-    OpenAIFunction = dict
-
-from typing import TYPE_CHECKING
+else:
+    try:
+        from openai.types.chat import (
+            ChatCompletionAssistantMessageParam,
+            ChatCompletionContentPartImageParam,
+            ChatCompletionContentPartRefusalParam,
+            ChatCompletionContentPartTextParam,
+            ChatCompletionMessageFunctionToolCallParam,
+            ChatCompletionMessageParam,
+            ChatCompletionSystemMessageParam,
+            ChatCompletionUserMessageParam,
+        )
+        from openai.types.chat.chat_completion_content_part_image_param import (
+            ImageURL as OpenAIImageURL,
+        )
+        from openai.types.chat.chat_completion_message_function_tool_call_param import (
+            Function as OpenAIFunction,
+        )
+    except ImportError:
+        # 仅在未安装 OpenAI SDK 时提供可导入的字典回退。
+        ChatCompletionAssistantMessageParam = dict
+        ChatCompletionContentPartImageParam = dict
+        ChatCompletionContentPartRefusalParam = dict
+        ChatCompletionContentPartTextParam = dict
+        ChatCompletionMessageFunctionToolCallParam = dict
+        ChatCompletionMessageParam = dict
+        ChatCompletionSystemMessageParam = dict
+        ChatCompletionUserMessageParam = dict
+        OpenAIImageURL = dict
+        OpenAIFunction = dict
 
 from pydantic import BaseModel
 
 from src.message.types import (
     AssistantMessage,
+    ContentPartAudio,
     ContentPartImage,
+    ContentPartPdf,
     ContentPartRefusal,
     ContentPartText,
+    ContentPartVideo,
     HumanMessage,
     Message,
     SystemMessage,
@@ -47,6 +66,28 @@ from src.message.types import (
 
 if TYPE_CHECKING:
     from src.tool.types import Tool
+
+UserContent = (
+    str
+    | list[
+        ContentPartText
+        | ContentPartImage
+        | ContentPartAudio
+        | ContentPartVideo
+        | ContentPartPdf
+    ]
+)
+AssistantContent = (
+    str
+    | list[
+        ContentPartText
+        | ContentPartImage
+        | ContentPartAudio
+        | ContentPartVideo
+        | ContentPartPdf
+        | ContentPartRefusal
+    ]
+)
 
 
 class OpenAIChatSerializer:
@@ -79,7 +120,7 @@ class OpenAIChatSerializer:
 
     @staticmethod
     def _serialize_user_content(
-        content: str | list[ContentPartText | ContentPartImage],
+        content: UserContent,
     ) -> (
         str
         | list[ChatCompletionContentPartTextParam | ChatCompletionContentPartImageParam]
@@ -91,34 +132,38 @@ class OpenAIChatSerializer:
             ChatCompletionContentPartTextParam | ChatCompletionContentPartImageParam
         ] = []
         for part in content:
-            if part.type == "text":
+            if isinstance(part, ContentPartText):
                 serialized_parts.append(
                     OpenAIChatSerializer._serialize_content_part_text(part)
                 )
-            elif part.type == "image_url":
+            elif isinstance(part, ContentPartImage):
                 serialized_parts.append(
                     OpenAIChatSerializer._serialize_content_part_image(part)
                 )
+            else:
+                raise TypeError(f"OpenAI Chat 暂不支持内容类型：{part.type}")
         return serialized_parts
 
     @staticmethod
     def _serialize_system_content(
-        content: str | list[ContentPartText],
+        content: UserContent,
     ) -> str | list[ChatCompletionContentPartTextParam]:
         """实现 `_serialize_system_content` 的业务逻辑。"""
         if isinstance(content, str):
             return content
         serialized_parts: list[ChatCompletionContentPartTextParam] = []
         for part in content:
-            if part.type == "text":
+            if isinstance(part, ContentPartText):
                 serialized_parts.append(
                     OpenAIChatSerializer._serialize_content_part_text(part)
                 )
+            else:
+                raise TypeError(f"系统消息只支持文本内容，收到：{part.type}")
         return serialized_parts
 
     @staticmethod
     def _serialize_assistant_content(
-        content: str | list[ContentPartText | ContentPartRefusal] | None,
+        content: AssistantContent | None,
     ) -> (
         str
         | list[
@@ -135,14 +180,16 @@ class OpenAIChatSerializer:
             ChatCompletionContentPartTextParam | ChatCompletionContentPartRefusalParam
         ] = []
         for part in content:
-            if part.type == "text":
+            if isinstance(part, ContentPartText):
                 serialized_parts.append(
                     OpenAIChatSerializer._serialize_content_part_text(part)
                 )
-            elif part.type == "refusal":
+            elif isinstance(part, ContentPartRefusal):
                 serialized_parts.append(
                     OpenAIChatSerializer._serialize_content_part_refusal(part)
                 )
+            else:
+                raise TypeError(f"助手消息暂不支持内容类型：{part.type}")
         return serialized_parts
 
     @staticmethod
@@ -170,6 +217,10 @@ class OpenAIChatSerializer:
     @overload
     @staticmethod
     def serialize(message: AssistantMessage) -> ChatCompletionAssistantMessageParam: ...
+
+    @overload
+    @staticmethod
+    def serialize(message: Message) -> ChatCompletionMessageParam: ...
 
     @staticmethod
     def serialize(message: Message) -> ChatCompletionMessageParam:
@@ -230,7 +281,9 @@ class OpenAIChatSerializer:
     @staticmethod
     def serialize_tools(tools: list["Tool"]) -> list[dict[str, Any]]:
         """序列化与 `serialize_tools` 对应的数据或状态。"""
-        return [tool.function_calling for tool in tools]
+        return [
+            tool.function_calling for tool in tools if tool.function_calling is not None
+        ]
 
     @staticmethod
     def serialize_response_format(
@@ -359,7 +412,7 @@ class OpenAIResponseSerializer:
 
     @staticmethod
     def _serialize_content(
-        content: str | list[ContentPartText | ContentPartImage],
+        content: UserContent | AssistantContent,
     ) -> list[dict[str, Any]]:
         """实现 `_serialize_content` 的业务逻辑。"""
         if isinstance(content, str):
@@ -367,14 +420,16 @@ class OpenAIResponseSerializer:
 
         serialized_parts: list[dict[str, Any]] = []
         for part in content:
-            if part.type == "text":
+            if isinstance(part, ContentPartText):
                 serialized_parts.append(
                     OpenAIResponseSerializer._serialize_content_part_text(part)
                 )
-            elif part.type == "image_url":
+            elif isinstance(part, ContentPartImage):
                 serialized_parts.append(
                     OpenAIResponseSerializer._serialize_content_part_image(part)
                 )
+            else:
+                raise TypeError(f"OpenAI Responses 暂不支持内容类型：{part.type}")
 
         return serialized_parts
 
@@ -382,37 +437,37 @@ class OpenAIResponseSerializer:
     def serialize(message: Message) -> dict[str, Any]:
         """实现 `serialize` 的业务逻辑。"""
         if isinstance(message, HumanMessage):
-            result: dict[str, Any] = {
+            user_result: dict[str, Any] = {
                 "role": "user",
                 "content": OpenAIResponseSerializer._serialize_content(message.content),
             }
             if message.name is not None:
-                result["name"] = message.name
-            return result
+                user_result["name"] = message.name
+            return user_result
 
         elif isinstance(message, SystemMessage):
             # 说明相关实现细节。
             # 组装并返回结果。
-            result: dict[str, Any] = {
+            system_result: dict[str, Any] = {
                 "role": "system",
                 "content": OpenAIResponseSerializer._serialize_content(message.content),
             }
             if message.name is not None:
-                result["name"] = message.name
-            return result
+                system_result["name"] = message.name
+            return system_result
 
         elif isinstance(message, AssistantMessage):
             # 处理输入参数。
-            result: dict[str, Any] = {
+            assistant_result: dict[str, Any] = {
                 "role": "assistant",
             }
             if message.content is not None:
-                result["content"] = OpenAIResponseSerializer._serialize_content(
-                    message.content
+                assistant_result["content"] = (
+                    OpenAIResponseSerializer._serialize_content(message.content)
                 )
             if message.name is not None:
-                result["name"] = message.name
-            return result
+                assistant_result["name"] = message.name
+            return assistant_result
 
         else:
             raise TypeError(f"Unknown message type: {type(message)}")

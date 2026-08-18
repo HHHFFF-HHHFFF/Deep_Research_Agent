@@ -48,6 +48,9 @@ class Tool(BaseModel):
     require_grad: bool = Field(
         default=False, description="Whether the tool requires gradients"
     )
+    function_calling: dict[str, Any] | None = Field(
+        default=None, description="工具调用协议描述"
+    )
 
 
 class ToolConfig(BaseModel):
