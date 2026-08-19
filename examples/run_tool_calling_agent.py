@@ -1,4 +1,3 @@
-import json
 import os
 import sys
 
@@ -15,18 +14,13 @@ from mmengine import DictAction
 root = str(Path(__file__).resolve().parents[1])
 sys.path.append(root)
 
-from src.agent import acp
 from src.application import ResearchRequest, resolve_research_task
-from src.config import config
-from src.environment import ecp
 from src.logger import logger
-from src.memory import memory_manager
-from src.model import model_manager
-from src.prompt import prompt_manager
-from src.session.types import SessionContext
-from src.skill import scp
-from src.tool import tcp
-from src.version import version_manager
+from src.research_runner import (
+    ResearchCancelledError,
+    ResearchRunError,
+    run_research,
+)
 
 
 def parse_args():
@@ -80,77 +74,27 @@ async def main():
         research_request = ResearchRequest(
             task=resolve_research_task(args.task),
             files=args.files or [],
+            model_provider=args.model_provider,
+            model_id=args.model_id,
+            fallback_models=args.fallback_models,
+            embedding_provider=args.embedding_provider,
+            embedding_model_id=args.embedding_model_id,
         )
     except ValueError as error:
-        raise SystemExit(f"研究主题无效：{error}") from error
+        raise SystemExit(f"研究参数无效：{error}") from error
 
-    config.initialize(config_path=args.config, args=args)
-    logger.initialize(config=config)
-    logger.info(f"| Config: {config.pretty_text}")
+    try:
+        result = await run_research(
+            research_request,
+            config_path=args.config,
+            cfg_options=args.cfg_options,
+        )
+    except ResearchCancelledError as error:
+        raise SystemExit(str(error)) from error
+    except ResearchRunError as error:
+        raise SystemExit(f"研究运行失败：{error}") from error
 
-    # 初始化相关状态。
-    logger.info("| 🧠 Initializing model manager...")
-    await model_manager.initialize(
-        primary_model=config.model_name,
-        fallback_models=config.fallback_models,
-        embedding_model=config.embedding_model_name,
-        embedding_fallback_models=config.embedding_fallback_models,
-    )
-    logger.info(f"| ✅ Model manager initialized: {await model_manager.list()}")
-
-    # 初始化相关状态。
-    logger.info("| 📁 Initializing prompt manager...")
-    await prompt_manager.initialize()
-    logger.info(f"| ✅ Prompt manager initialized: {await prompt_manager.list()}")
-
-    # 初始化相关状态。
-    logger.info("| 📁 Initializing memory manager...")
-    await memory_manager.initialize(memory_names=config.memory_names)
-    logger.info(f"| ✅ Memory manager initialized: {await memory_manager.list()}")
-
-    # 初始化相关状态。
-    logger.info("| 🛠️ Initializing tools...")
-    await tcp.initialize(tool_names=config.tool_names)
-    logger.info(f"| ✅ Tools initialized: {await tcp.list()}")
-
-    # 初始化相关状态。
-    logger.info("| 🎯 Initializing skills...")
-    skill_names = getattr(config, "skill_names", None)
-    await scp.initialize(skill_names=skill_names)
-    logger.info(f"| ✅ Skills initialized: {await scp.list()}")
-
-    # 初始化相关状态。
-    logger.info("| 🎮 Initializing environments...")
-    await ecp.initialize(config.env_names)
-    logger.info(f"| ✅ Environments initialized: {ecp.list()}")
-
-    # 初始化相关状态。
-    logger.info("| 🤖 Initializing agents...")
-    await acp.initialize(agent_names=config.agent_names)
-    logger.info(f"| ✅ Agents initialized: {await acp.list()}")
-
-    # 初始化相关状态。
-    logger.info("| 📁 Initializing version manager...")
-    await version_manager.initialize()
-    logger.info(
-        f"| ✅ Version manager initialized: {json.dumps(await version_manager.list(), indent=4)}"
-    )
-
-    logger.info(f"| 📋 Task: {research_request.task}")
-    logger.info(f"| 📂 Files: {research_request.files}")
-
-    # 说明相关实现细节。
-    ctx = SessionContext()
-
-    agent_input = {
-        "name": "tool_calling",
-        "input": {
-            "task": research_request.task,
-            "files": research_request.files,
-        },
-        "ctx": ctx,
-    }
-    await acp(**agent_input)
+    logger.info(f"| 📄 最终报告：\n{result.report}")
 
 
 if __name__ == "__main__":

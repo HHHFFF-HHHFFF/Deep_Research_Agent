@@ -41,3 +41,23 @@ def test_research_request_normalizes_and_validates_task() -> None:
 
     with pytest.raises(ValidationError, match="研究主题不能为空"):
         ResearchRequest(task="   ")
+
+
+def test_research_request_normalizes_files_and_model_options() -> None:
+    """研究请求应清理重复文件，并校验模型覆盖项。"""
+    request = ResearchRequest(
+        task="调研本地 RAG",
+        files=[" 资料.pdf ", "资料.pdf", "  "],
+        model_provider="deepseek",
+        model_id="deepseek-chat",
+        fallback_models=["qwen/qwen-plus", " qwen/qwen-plus "],
+    )
+
+    assert request.files == ["资料.pdf"]
+    assert request.fallback_models == ["qwen/qwen-plus"]
+
+    with pytest.raises(ValidationError, match="必须同时指定模型标识"):
+        ResearchRequest(task="调研模型路由", model_provider="deepseek")
+
+    with pytest.raises(ValidationError, match="提供方/模型"):
+        ResearchRequest(task="调研模型路由", fallback_models=["qwen-plus"])

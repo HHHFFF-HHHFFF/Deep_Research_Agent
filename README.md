@@ -27,10 +27,13 @@
 - 本地文档解析、切分、内容哈希去重和不可信证据隔离
 - Qwen Embedding、FAISS Top-K 4 检索与索引落盘
 - 命令行通过多个 `--file` 使用本地文档 RAG
+- 命令行与后续 FastAPI 共用的异步研究运行入口
+- 结构化研究结果、真实阶段回调、协作式取消和稳定错误处理
+- 优先返回 Reporter 实际生成的 Markdown 报告文件
 - P1-M1 全仓 Ruff 规范清理
 - P1-M2a 至 P1-M2d 高价值类型修复
 
-正在规划并逐步实现稳定 Web 界面。下一步是提取命令行与 FastAPI 共用的研究运行入口；前端代码尚未完成，当前可用入口仍是命令行。
+稳定 Web 界面正在按阶段实现。W1 研究运行入口已经完成，下一步是 W2 FastAPI、SQLite 和单进程任务管理；前端代码尚未完成，当前可用入口仍是命令行。
 
 ## 目标技术栈
 
@@ -78,7 +81,8 @@ configs/       研究场景与模型配置
 docs/          项目范围、技术需求和开发计划
 examples/      当前命令行入口
 src/
-  application/ 研究输入校验
+  application/ 研究输入、阶段和结果模型
+  research_runner.py 命令行与后续 API 共用的异步研究入口
   document_retriever.py 本地文档切分与 FAISS 检索
   agent/       工具型 Agent 执行循环
   model/       Qwen／DeepSeek 等模型适配与降级
@@ -89,7 +93,7 @@ src/
 tests/         离线测试
 ```
 
-后续按计划增加轻量后端模块与 `frontend/`，不会重写现有研究核心或另建一套 RAG。
+后续按计划增加 FastAPI、SQLite 任务管理与 `frontend/`，不会重写现有研究核心或另建一套 RAG。
 
 ## 配置模型
 
