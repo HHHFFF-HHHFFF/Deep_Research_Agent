@@ -38,13 +38,13 @@ const MODEL_OPTIONS: Record<
   qwen: {
     title: "Qwen",
     modelId: "qwen-plus",
-    description: "通义千问，适合中文研究与工具调用",
+    description: "适合中文研究与工具调用",
     mark: "Q",
   },
   deepseek: {
     title: "DeepSeek",
     modelId: "deepseek-v4-flash",
-    description: "DeepSeek，侧重推理与内容分析",
+    description: "侧重推理与内容分析",
     mark: "D",
   },
 };
