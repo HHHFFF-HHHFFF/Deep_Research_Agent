@@ -167,8 +167,8 @@ function App() {
           <section className="intro-panel" aria-labelledby="page-title">
             <Tag variant="filled" className="eyebrow">个人深度研究助手</Tag>
             <Title id="page-title" level={1}>
-              把一个研究问题，
-              <span>变成有依据的中文报告。</span>
+              <span className="title-line title-line-primary">把一个研究问题，</span>
+              <span className="title-line title-line-accent">变成有依据的中文报告。</span>
             </Title>
             <Paragraph className="intro-copy">
               Agent 会检索并分析网页资料，也可以结合你的本地文档，通过 FAISS

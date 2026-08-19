@@ -103,12 +103,14 @@ button, input, textarea { font: inherit; }
 .intro-panel h1.ant-typography {
   margin: 0;
   color: #102a43;
-  font-size: clamp(42px, 4.6vw, 64px);
+  font-size: clamp(42px, 4.2vw, 58px);
   line-height: 1.16;
   letter-spacing: -0.045em;
   font-weight: 760;
 }
-.intro-panel h1 span { color: #0e7490; display: block; }
+.intro-panel h1 .title-line { display: block; }
+.intro-panel h1 .title-line-primary { color: #102a43; white-space: nowrap; }
+.intro-panel h1 .title-line-accent { color: #0e7490; }
 .intro-copy.ant-typography {
   max-width: 540px;
   margin: 26px 0 38px;
@@ -381,6 +383,10 @@ button, input, textarea { font: inherit; }
   .task-panel, .history-panel { padding: 20px 16px; }
   .task-meta-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .panel-heading { gap: 12px; }
+}
+
+@media (max-width: 360px) {
+  .intro-panel h1 .title-line-primary { white-space: normal; }
 }
 
 @media (prefers-reduced-motion: reduce) {

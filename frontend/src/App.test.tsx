@@ -52,6 +52,8 @@ describe("研究输入与任务工作区", () => {
     const fetchMock = useEmptyHistory();
     render(<App />);
 
+    expect(screen.getByText("把一个研究问题，")).toHaveClass("title-line-primary");
+    expect(screen.getByText("变成有依据的中文报告。")).toHaveClass("title-line-accent");
     expect(screen.getByText("适合中文研究与工具调用")).toBeVisible();
     expect(screen.getByText("侧重推理与内容分析")).toBeVisible();
     await user.click(screen.getByRole("button", { name: /开始深度研究/ }));
