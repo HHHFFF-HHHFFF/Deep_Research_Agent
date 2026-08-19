@@ -30,10 +30,14 @@
 - 命令行与后续 FastAPI 共用的异步研究运行入口
 - 结构化研究结果、真实阶段回调、协作式取消和稳定错误处理
 - 优先返回 Reporter 实际生成的 Markdown 报告文件
+- FastAPI 健康检查、文件、任务、取消、历史和报告接口
+- SQLAlchemy 2 + SQLite 任务、文件和报告元数据持久化
+- 单进程单活动任务管理、启动恢复和关闭中断处理
+- 安全文件名、扩展名、空文件和大小限制
 - P1-M1 全仓 Ruff 规范清理
 - P1-M2a 至 P1-M2d 高价值类型修复
 
-稳定 Web 界面正在按阶段实现。W1 研究运行入口已经完成，下一步是 W2 FastAPI、SQLite 和单进程任务管理；前端代码尚未完成，当前可用入口仍是命令行。
+稳定 Web 界面正在按阶段实现。W2 后端接口与任务管理已经完成，下一步是 W3 React 单页输入界面；当前可以使用命令行或 FastAPI 接口，React 前端尚未完成。
 
 ## 目标技术栈
 
@@ -50,7 +54,7 @@
 | 本地 RAG | FAISS、Qwen Embedding | 本地文档向量索引与 Top-K 检索 |
 | 质量检查 | pytest、Ruff、mypy、前端类型检查与组件测试 | 离线验证后端与关键交互 |
 
-FastAPI、React、SQLite 等 Web 技术属于目标路线，尚未全部落地；现有 Agent、命令行和本地 RAG 已可运行。
+FastAPI、SQLite 和单进程任务管理已经落地；React、Vite 和 Ant Design 是下一阶段目标。现有 Agent、命令行、本地 RAG 和后端接口均可运行。
 
 ## 目标架构
 
@@ -81,6 +85,7 @@ configs/       研究场景与模型配置
 docs/          项目范围、技术需求和开发计划
 examples/      当前命令行入口
 src/
+  api/         FastAPI、SQLite 和单任务管理
   application/ 研究输入、阶段和结果模型
   research_runner.py 命令行与后续 API 共用的异步研究入口
   document_retriever.py 本地文档切分与 FAISS 检索
@@ -93,7 +98,7 @@ src/
 tests/         离线测试
 ```
 
-后续按计划增加 FastAPI、SQLite 任务管理与 `frontend/`，不会重写现有研究核心或另建一套 RAG。
+后续按计划增加 `frontend/`，不会重写现有研究核心或另建一套 RAG。
 
 ## 配置模型
 
@@ -125,6 +130,8 @@ DASHSCOPE_API_KEY=你的密钥
 
 ## 当前运行方式
 
+### 命令行
+
 在项目解释器环境中执行：
 
 ```bash
@@ -150,7 +157,20 @@ python examples/run_tool_calling_agent.py \
 
 程序会把文档转换为 Markdown，按 1000 字和 150 字重叠切分，使用当前 Embedding 模型写入会话级 FAISS，并把最相关的 4 个片段交给 Agent。
 
-Web 启动方式会在对应开发阶段完成后补充，当前不提供尚不可用的命令。
+### FastAPI 后端
+
+开发时启动单进程后端：
+
+```bash
+python -m uvicorn src.api.app:app --reload
+```
+
+启动后可以访问：
+
+- API 文档：`http://127.0.0.1:8000/docs`
+- 健康检查：`http://127.0.0.1:8000/api/health`
+
+后端使用 `workdir/web/research.db` 保存任务元数据，上传文件和报告也保存在 `workdir/web/` 内。这些运行产物已经被 Git 忽略。当前架构只支持一个 Uvicorn worker 和一个活动研究任务。
 
 ## 设计文档
 
