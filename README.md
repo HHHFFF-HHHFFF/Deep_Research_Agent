@@ -1,21 +1,20 @@
 # 深度研究智能体
 
-一个本地运行的个人深度研究助手。用户输入研究主题后，工具型 Agent 会搜索和分析网页资料，并生成中文 Markdown 研究报告。
+一个意在提升个人研究效率的个人项目，也是一个为研究课题提供初始方向并生成初始报告的 Agent 研究助手。
 
-项目重点展示 Agent 工具调用、Qwen／DeepSeek 模型路由、网页研究和 FAISS 本地 RAG。前端采用轻量级 Streamlit 单页方案，不建设复杂平台。
+用户输入研究主题并可选提供本地资料后，工具型 Agent 会搜索、抓取和分析网页内容，再生成中文 Markdown 研究报告。项目重点展示 Agent 工具调用、Qwen／DeepSeek 模型路由、网页研究、FAISS 本地 RAG，以及稳定 Web 交互的完整闭环。
 
 ## 项目定位
 
-这是一个意在提升个人研究效率的个人项目，是一个为研究课题提供初始方向并生成初始报告的Agent研究助手：
-
-- 单个用户在本地运行
+- 单个用户在本地或个人演示环境运行
 - 输入一个研究主题
 - 可选择 Qwen 或 DeepSeek
+- 可选上传本地文档作为补充证据
 - Agent 调用搜索、抓取、分析和报告工具
-- 页面展示并下载最终报告
-- 可选上传本地文档并复用 FAISS 检索
+- 在浏览器中查看任务状态并下载最终报告
+- 页面刷新后可恢复最近任务和已完成报告
 
-项目明确不做 FastAPI、Next.js、数据库、Redis、任务队列、用户系统和多租户。
+项目不是通用 AI 平台。首版不实现用户系统、多租户、Redis、Celery、WebSocket、微服务或高并发部署。
 
 ## 当前状态
 
@@ -25,44 +24,54 @@
 - Qwen／DeepSeek 聊天模型切换
 - 独立 Embedding 配置和备用模型降级
 - 工具型 Agent、网页研究和报告生成
-- 本地文档切分、去重、Qwen Embedding、FAISS Top-K 检索与索引落盘
+- 本地文档解析、切分、内容哈希去重和不可信证据隔离
+- Qwen Embedding、FAISS Top-K 4 检索与索引落盘
+- 命令行通过多个 `--file` 使用本地文档 RAG
 - P1-M1 全仓 Ruff 规范清理
-- P1-M2a 至 P1-M2d 的高价值类型修复
-- 命令行研究入口
+- P1-M2a 至 P1-M2d 高价值类型修复
 
-下一步是从现有命令行提取一个轻量异步调用函数，然后增加单页 Streamlit 界面和文件上传控件。原应用服务层和平台化计划已取消。
+正在规划并逐步实现稳定 Web 界面。下一步是提取命令行与 FastAPI 共用的研究运行入口；前端代码尚未完成，当前可用入口仍是命令行。
 
-## 技术栈
+## 目标技术栈
 
-| 技术 | 用途 |
-| --- | --- |
-| Python 3.10、AsyncIO | Agent 主程序和异步工具调用 |
-| Streamlit | 本地单页用户界面 |
-| Pydantic v2 | 研究主题与文件输入校验 |
-| MMEngine Config、python-dotenv | 配置合并和本地密钥读取 |
-| Qwen、DeepSeek | 聊天模型与工具调用 |
-| OpenAI 兼容接口 | 统一连接不同模型提供方 |
-| Crawl4AI、DDGS、HTTPX | 网页搜索、抓取和解析 |
-| FAISS、Qwen Embedding | 本地文档向量检索 |
-| pytest、Ruff、mypy | 离线测试、规范与类型检查 |
+| 层次 | 技术 | 用途 |
+| --- | --- | --- |
+| 研究核心 | Python 3.10、AsyncIO | Agent 主程序、模型与异步工具调用 |
+| 后端 | FastAPI、Uvicorn、Pydantic v2 | 文件上传、研究任务、状态、取消与报告接口 |
+| 元数据 | SQLite、SQLAlchemy 2 | 保存任务、文件和报告元数据，支持刷新恢复 |
+| 前端 | React、TypeScript、Vite | 稳定的单页用户界面 |
+| 组件与报告 | Ant Design、react-markdown | 表单、上传、状态反馈和安全 Markdown 展示 |
+| 配置 | MMEngine Config、python-dotenv | 配置合并和本地密钥读取 |
+| 大模型 | Qwen、DeepSeek、OpenAI 兼容接口 | 工具调用、分析和报告生成 |
+| 网页研究 | Crawl4AI、DDGS、HTTPX | 网页搜索、抓取和解析 |
+| 本地 RAG | FAISS、Qwen Embedding | 本地文档向量索引与 Top-K 检索 |
+| 质量检查 | pytest、Ruff、mypy、前端类型检查与组件测试 | 离线验证后端与关键交互 |
 
-## 核心流程
+FastAPI、React、SQLite 等 Web 技术属于目标路线，尚未全部落地；现有 Agent、命令行和本地 RAG 已可运行。
+
+## 目标架构
 
 ```text
-研究主题／可选文档
-        ↓
-文档解析 → 切分 → Embedding → FAISS Top-K
-        ↓
+React + TypeScript 单页界面
+  ├─ 研究主题与模型选择
+  ├─ 可选文档上传
+  ├─ 状态轮询与任务取消
+  └─ Markdown 报告查看与下载
+                ↓ HTTP
+FastAPI + 单进程 AsyncIO 任务管理
+  ├─ Pydantic 输入校验
+  ├─ SQLite 任务元数据
+  └─ 研究运行入口
+                ↓
 工具型 Agent
-        ↓
-搜索 → 抓取 → 分析 → 报告
-        ↓
-Markdown 研究报告
+  ├─ 网页搜索、抓取与分析
+  ├─ 本地文档 → 切分 → Embedding → FAISS Top-K
+  └─ 中文 Markdown 报告
 ```
 
-Streamlit 只负责收集输入和展示结果，现有 Agent 与研究工具仍是项目主体。
+首版使用 1 至 2 秒 HTTP 轮询，不使用 SSE 或 WebSocket；同一时间只执行一个研究任务。SQLite 负责界面状态恢复，FAISS 负责文档向量检索。
 
-## 项目结构
+## 当前项目结构
 
 ```text
 configs/       研究场景与模型配置
@@ -75,17 +84,12 @@ src/
   model/       Qwen／DeepSeek 等模型适配与降级
   tool/        搜索、文档分析和报告工具
   environment/ 文件系统与 FAISS 检索
-  memory/      研究过程记忆
+  memory/      研究过程会话记忆
   prompt/      工具调用提示模板
 tests/         离线测试
 ```
 
-计划新增的界面代码只保留：
-
-```text
-streamlit_app.py       单页界面
-src/research_runner.py 命令行与界面共用的轻量研究调用函数
-```
+后续按计划增加轻量后端模块与 `frontend/`，不会重写现有研究核心或另建一套 RAG。
 
 ## 配置模型
 
@@ -142,19 +146,15 @@ python examples/run_tool_calling_agent.py \
 
 程序会把文档转换为 Markdown，按 1000 字和 150 字重叠切分，使用当前 Embedding 模型写入会话级 FAISS，并把最相关的 4 个片段交给 Agent。
 
-Streamlit 界面将在下一阶段完成，届时使用：
-
-```bash
-streamlit run streamlit_app.py
-```
+Web 启动方式会在对应开发阶段完成后补充，当前不提供尚不可用的命令。
 
 ## 设计文档
 
 - [项目范围](docs/PROJECT_SCOPE.md)
-- [轻量开发计划](docs/DEVELOPMENT_PLAN.md)
+- [稳定 Web 前端开发计划](docs/DEVELOPMENT_PLAN.md)
 - [技术需求](docs/TECHNICAL_REQUIREMENTS.md)
 - [许可证中文说明](LICENSE_zh.md)
 
 ## 范围原则
 
-后续功能必须直接服务于“输入主题并生成研究报告”。如果一个需求需要数据库、服务端 API、队列、多用户或多个新业务模块，默认不加入本项目。
+后续功能必须直接服务于“输入主题、结合可选资料并生成研究报告”，或者解决该流程中的输入校验、状态恢复、取消和错误反馈。项目保留 FastAPI、React 单页前端和 SQLite 元数据，明确不扩张到多用户、分布式任务队列或微服务平台。
