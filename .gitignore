@@ -33,6 +33,11 @@ workdir/
 logs/
 *.log
 
+# 前端依赖、构建与测试产物
+frontend/node_modules/
+frontend/dist/
+frontend/coverage/
+
 # 临时文件
 *.tmp
 *.bak

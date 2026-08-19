@@ -34,10 +34,13 @@
 - SQLAlchemy 2 + SQLite 任务、文件和报告元数据持久化
 - 单进程单活动任务管理、启动恢复和关闭中断处理
 - 安全文件名、扩展名、空文件和大小限制
+- React + TypeScript + Vite 单页研究输入界面
+- Ant Design 主题表单、Qwen／DeepSeek 选择和响应式布局
+- 可选资料上传、任务创建、重复提交保护和中文错误反馈
 - P1-M1 全仓 Ruff 规范清理
 - P1-M2a 至 P1-M2d 高价值类型修复
 
-稳定 Web 界面正在按阶段实现。W2 后端接口与任务管理已经完成，下一步是 W3 React 单页输入界面；当前可以使用命令行或 FastAPI 接口，React 前端尚未完成。
+稳定 Web 界面正在按阶段实现。W3 研究输入、文件上传和任务创建已经完成；下一步 W4 将接入状态轮询、取消、报告查看下载和最近任务恢复。
 
 ## 目标技术栈
 
@@ -47,14 +50,15 @@
 | 后端 | FastAPI、Uvicorn、Pydantic v2 | 文件上传、研究任务、状态、取消与报告接口 |
 | 元数据 | SQLite、SQLAlchemy 2 | 保存任务、文件和报告元数据，支持刷新恢复 |
 | 前端 | React、TypeScript、Vite | 稳定的单页用户界面 |
-| 组件与报告 | Ant Design、react-markdown | 表单、上传、状态反馈和安全 Markdown 展示 |
+| 组件 | Ant Design | 表单、上传、状态反馈和响应式布局 |
+| 报告展示 | react-markdown（W4） | 安全展示 Markdown，不启用原始 HTML |
 | 配置 | MMEngine Config、python-dotenv | 配置合并和本地密钥读取 |
 | 大模型 | Qwen、DeepSeek、OpenAI 兼容接口 | 工具调用、分析和报告生成 |
 | 网页研究 | Crawl4AI、DDGS、HTTPX | 网页搜索、抓取和解析 |
 | 本地 RAG | FAISS、Qwen Embedding | 本地文档向量索引与 Top-K 检索 |
 | 质量检查 | pytest、Ruff、mypy、前端类型检查与组件测试 | 离线验证后端与关键交互 |
 
-FastAPI、SQLite 和单进程任务管理已经落地；React、Vite 和 Ant Design 是下一阶段目标。现有 Agent、命令行、本地 RAG 和后端接口均可运行。
+FastAPI、SQLite、单进程任务管理以及 React、Vite、Ant Design 研究输入界面均已落地。现有 Agent、命令行、本地 RAG、后端接口和任务提交页面均可运行。
 
 ## 目标架构
 
@@ -84,6 +88,7 @@ FastAPI + 单进程 AsyncIO 任务管理
 configs/       研究场景与模型配置
 docs/          项目范围、技术需求和开发计划
 examples/      当前命令行入口
+frontend/      React、TypeScript、Vite 单页前端
 src/
   api/         FastAPI、SQLite 和单任务管理
   application/ 研究输入、阶段和结果模型
@@ -98,7 +103,7 @@ src/
 tests/         离线测试
 ```
 
-后续按计划增加 `frontend/`，不会重写现有研究核心或另建一套 RAG。
+前端通过 HTTP 复用现有 FastAPI 和研究核心，不会另建一套 Agent 或 RAG。
 
 ## 配置模型
 
@@ -171,6 +176,20 @@ python -m uvicorn src.api.app:app --reload
 - 健康检查：`http://127.0.0.1:8000/api/health`
 
 后端使用 `workdir/web/research.db` 保存任务元数据，上传文件和报告也保存在 `workdir/web/` 内。这些运行产物已经被 Git 忽略。当前架构只支持一个 Uvicorn worker 和一个活动研究任务。
+
+### React 前端
+
+前端需要 Node.js 20.19 以上兼容版本和 pnpm。在另一个终端中执行：
+
+```bash
+cd frontend
+pnpm install
+pnpm dev
+```
+
+浏览器打开 `http://127.0.0.1:5173`。开发服务器默认把 `/api` 转发到 `http://127.0.0.1:8000`，因此需要同时保持 FastAPI 后端运行。
+
+如需使用其他后端地址，复制 `frontend/.env.template` 为 `frontend/.env.local`，只配置 `VITE_API_BASE_URL`。API 密钥仍然只能放在项目根目录的后端 `.env` 中。
 
 ## 设计文档
 
