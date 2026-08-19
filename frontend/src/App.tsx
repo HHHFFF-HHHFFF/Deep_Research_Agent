@@ -230,14 +230,16 @@ function App() {
                   {(Object.entries(MODEL_OPTIONS) as [ModelProvider, (typeof MODEL_OPTIONS)[ModelProvider]][]).map(
                     ([provider, option]) => (
                       <Radio.Button key={provider} value={provider} className="model-option">
-                        <span className={`model-mark model-mark-${provider}`}>{option.mark}</span>
-                        <span className="model-copy">
-                          <strong>{option.title}</strong>
-                          <small>{option.description}</small>
+                        <span className="model-option-content">
+                          <span className={`model-mark model-mark-${provider}`}>{option.mark}</span>
+                          <span className="model-copy">
+                            <strong>{option.title}</strong>
+                            <small>{option.description}</small>
+                          </span>
+                          {selectedProvider === provider && (
+                            <CheckCircleFilled className="model-check" aria-hidden="true" />
+                          )}
                         </span>
-                        {selectedProvider === provider && (
-                          <CheckCircleFilled className="model-check" aria-hidden="true" />
-                        )}
                       </Radio.Button>
                     ),
                   )}

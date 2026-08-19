@@ -153,20 +153,24 @@ button, input, textarea { font: inherit; }
 .research-card .ant-form-item-label > label { color: #29475c; font-size: 14px; font-weight: 650; }
 .research-card textarea.ant-input { padding: 13px 14px; line-height: 1.7; resize: none; }
 
-.model-grid { width: 100%; display: grid; grid-template-columns: 1fr; gap: 12px; }
+.model-grid { width: 100%; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .model-option.ant-radio-button-wrapper {
-  position: relative;
   height: auto;
-  min-height: 68px;
-  padding: 13px 44px 13px 14px;
-  display: grid;
-  grid-template-columns: 38px minmax(0, 1fr);
-  align-items: center;
-  gap: 12px;
+  min-height: 88px;
+  padding: 0;
   white-space: normal;
   border: 1px solid #dce7e9;
   border-radius: 12px;
   line-height: normal;
+}
+.model-option-content {
+  width: 100%;
+  min-height: 86px;
+  padding: 14px;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 10px;
 }
 .model-option.ant-radio-button-wrapper::before { display: none; }
 .model-option.ant-radio-button-wrapper:hover { border-color: #6eabb8; color: inherit; }
@@ -187,18 +191,19 @@ button, input, textarea { font: inherit; }
 }
 .model-mark-qwen { background: #3268b2; }
 .model-mark-deepseek { background: #0e7490; }
-.model-copy { min-width: 0; display: flex; flex-direction: row; align-items: center; gap: 14px; }
-.model-copy strong { flex: 0 0 auto; color: #18394f; font-size: 14px; }
+.model-copy { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 5px; }
+.model-copy strong { color: #18394f; font-size: 14px; }
 .model-copy small {
-  min-width: 0;
-  overflow: hidden;
+  display: block;
+  width: 100%;
   color: #6c7f90;
   font-size: 12px;
-  line-height: 1.4;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.5;
+  overflow-wrap: break-word;
+  text-align: left;
+  white-space: normal;
 }
-.model-check { position: absolute; right: 16px; color: #0e7490; }
+.model-check { color: #0e7490; }
 
 .file-dragger.ant-upload-wrapper .ant-upload-drag {
   min-height: 126px;
@@ -244,8 +249,9 @@ button, input, textarea { font: inherit; }
   .research-flow { display: none; }
   .research-card { padding: 24px 18px; border-radius: 18px; }
   .card-heading h2.ant-typography { font-size: 24px; }
-  .model-option.ant-radio-button-wrapper { min-height: 64px; }
-  .model-copy { gap: 9px; }
+  .model-grid { grid-template-columns: 1fr; }
+  .model-option.ant-radio-button-wrapper { min-height: 74px; }
+  .model-option-content { min-height: 72px; padding: 12px 14px; }
   .card-footer { flex-direction: column; gap: 4px; text-align: center; }
 }
 

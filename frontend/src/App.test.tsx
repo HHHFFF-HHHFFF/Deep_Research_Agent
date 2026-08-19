@@ -36,6 +36,8 @@ describe("研究输入页面", () => {
     const user = userEvent.setup();
     render(<App />);
 
+    expect(screen.getByText("适合中文研究与工具调用")).toBeVisible();
+    expect(screen.getByText("侧重推理与内容分析")).toBeVisible();
     await user.click(screen.getByRole("button", { name: /开始深度研究/ }));
 
     expect(await screen.findByText("请输入研究主题")).toBeInTheDocument();
