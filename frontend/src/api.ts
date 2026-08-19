@@ -1,4 +1,11 @@
 export type ModelProvider = "qwen" | "deepseek";
+export type TaskStatus =
+  | "waiting"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "cancelled"
+  | "interrupted";
 
 export interface UploadedFile {
   id: string;
@@ -13,13 +20,7 @@ export interface ResearchTask {
   model_provider: ModelProvider;
   model_id: string;
   actual_model_name: string | null;
-  status:
-    | "waiting"
-    | "running"
-    | "succeeded"
-    | "failed"
-    | "cancelled"
-    | "interrupted";
+  status: TaskStatus;
   stage: string;
   message: string;
   error_message: string | null;
@@ -28,6 +29,10 @@ export interface ResearchTask {
   created_at: string;
   started_at: string | null;
   finished_at: string | null;
+}
+
+export interface TaskListResponse {
+  items: ResearchTask[];
 }
 
 interface ApiErrorPayload {
@@ -74,16 +79,26 @@ async function readError(response: Response): Promise<ApiClientError> {
   return new ApiClientError(message, code, response.status);
 }
 
-async function requestJson<T>(path: string, init: RequestInit): Promise<T> {
+function isAbortError(error: unknown): boolean {
+  return error instanceof Error && error.name === "AbortError";
+}
+
+async function request(path: string, init: RequestInit): Promise<Response> {
   let response: Response;
   try {
     response = await fetch(apiUrl(path), init);
-  } catch {
+  } catch (error) {
+    if (isAbortError(error)) throw error;
     throw new ApiClientError("无法连接研究服务，请确认后端已经启动", "service_unavailable");
   }
   if (!response.ok) {
     throw await readError(response);
   }
+  return response;
+}
+
+async function requestJson<T>(path: string, init: RequestInit): Promise<T> {
+  const response = await request(path, init);
   return (await response.json()) as T;
 }
 
@@ -112,4 +127,40 @@ export async function createResearchTask(input: CreateTaskInput): Promise<Resear
       file_ids: uploadedFiles.map((file) => file.id),
     }),
   });
+}
+
+export async function listResearchTasks(
+  limit = 8,
+  signal?: AbortSignal,
+): Promise<ResearchTask[]> {
+  const response = await requestJson<TaskListResponse>(`/api/tasks?limit=${limit}`, {
+    method: "GET",
+    signal,
+  });
+  return response.items;
+}
+
+export function getResearchTask(taskId: string, signal?: AbortSignal): Promise<ResearchTask> {
+  return requestJson<ResearchTask>(`/api/tasks/${encodeURIComponent(taskId)}`, {
+    method: "GET",
+    signal,
+  });
+}
+
+export function cancelResearchTask(taskId: string): Promise<ResearchTask> {
+  return requestJson<ResearchTask>(`/api/tasks/${encodeURIComponent(taskId)}/cancel`, {
+    method: "POST",
+  });
+}
+
+export async function getResearchReport(taskId: string, signal?: AbortSignal): Promise<string> {
+  const response = await request(`/api/tasks/${encodeURIComponent(taskId)}/report`, {
+    method: "GET",
+    signal,
+  });
+  return response.text();
+}
+
+export function researchReportUrl(taskId: string): string {
+  return apiUrl(`/api/tasks/${encodeURIComponent(taskId)}/report`);
 }

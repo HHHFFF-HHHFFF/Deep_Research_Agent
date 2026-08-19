@@ -10,7 +10,7 @@
 | 元数据存储 | SQLite、SQLAlchemy 2 | 保存任务状态、上传文件和报告路径，支持刷新恢复 |
 | 前端 | React、TypeScript、Vite | 构建稳定的单页用户界面 |
 | 组件库 | Ant Design | 提供成熟的表单、上传、提示和响应式布局组件 |
-| 报告展示 | react-markdown（W4 接入） | 安全展示 Markdown，不启用原始 HTML |
+| 报告展示 | react-markdown | 安全展示 Markdown，不启用原始 HTML |
 | 配置 | MMEngine Config、python-dotenv | 加载场景配置、模型选择和本地密钥 |
 | 大模型 | Qwen、DeepSeek、OpenAI 兼容接口 | 执行工具调用、分析和报告生成 |
 | 网页研究 | Crawl4AI、DDGS、HTTPX | 搜索、抓取和解析网页资料 |
@@ -65,7 +65,9 @@
 - 报告使用 `react-markdown` 展示，不启用原始 HTML，也不执行报告中的脚本。
 - 页面刷新后通过最近任务接口恢复任务和报告。
 - 密钥只由后端从 `.env` 读取，前端代码、构建变量和浏览器存储均不得包含密钥。
-- W3 已实现主题输入、Qwen／DeepSeek 白名单选择、可选资料上传和任务创建；轮询、取消、报告与历史恢复留在 W4。
+- W3 已实现主题输入、Qwen／DeepSeek 白名单选择、可选资料上传和任务创建。
+- W4 已实现 1.5 秒状态轮询、协作式取消、连续失败暂停、最近 8 个任务、刷新恢复、安全报告预览和 Markdown 下载。
+- 报告渲染必须保持 `skipHtml`，不得接入可执行原始 HTML 的插件；报告外部链接必须使用 `noopener noreferrer`。
 
 ## 六、模型配置
 

@@ -14,18 +14,19 @@ import {
   Form,
   Input,
   Radio,
-  Space,
   Tag,
   Typography,
   Upload,
-  message,
   type UploadFile,
   type UploadProps,
 } from "antd";
 import zhCN from "antd/locale/zh_CN";
 import { useState } from "react";
 
-import { ApiClientError, createResearchTask, type ModelProvider, type ResearchTask } from "./api";
+import { ApiClientError, createResearchTask, type ModelProvider } from "./api";
+import { RecentTasks } from "./components/RecentTasks";
+import { TaskWorkspace } from "./components/TaskWorkspace";
+import { useResearchWorkspace } from "./useResearchWorkspace";
 import "./App.css";
 
 const { Dragger } = Upload;
@@ -71,38 +72,40 @@ function App() {
   const [form] = Form.useForm<ResearchFormValues>();
   const [fileList, setFileList] = useState<UploadFile[]>([]);
   const [submitting, setSubmitting] = useState(false);
-  const [createdTask, setCreatedTask] = useState<ResearchTask | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [uploadErrorMessage, setUploadErrorMessage] = useState<string | null>(null);
+  const workspaceState = useResearchWorkspace();
   const selectedProvider = Form.useWatch("provider", form) ?? "qwen";
+  const controlsDisabled = submitting || workspaceState.hasActiveTask;
 
   const uploadProps: UploadProps = {
     multiple: true,
     accept: ALLOWED_EXTENSIONS.join(","),
     maxCount: MAX_FILE_COUNT,
     fileList,
-    disabled: submitting,
+    disabled: controlsDisabled,
     beforeUpload: (file) => {
       if (!ALLOWED_EXTENSIONS.includes(fileExtension(file.name))) {
-        void message.error("仅支持 Markdown、TXT、PDF 和 DOCX 文件");
+        setUploadErrorMessage("仅支持 Markdown、TXT、PDF 和 DOCX 文件");
         return Upload.LIST_IGNORE;
       }
       if (file.size > MAX_FILE_BYTES) {
-        void message.error("单个文件不能超过 10 MB");
+        setUploadErrorMessage("单个文件不能超过 10 MB");
         return Upload.LIST_IGNORE;
       }
+      setUploadErrorMessage(null);
       return false;
     },
     onChange: ({ fileList: nextFileList }) => {
       setFileList(nextFileList.slice(-MAX_FILE_COUNT));
-      setCreatedTask(null);
       setErrorMessage(null);
+      setUploadErrorMessage(null);
     },
   };
 
   const submitResearch = async (values: ResearchFormValues) => {
-    if (submitting) return;
+    if (submitting || workspaceState.hasActiveTask) return;
     setSubmitting(true);
-    setCreatedTask(null);
     setErrorMessage(null);
     const model = MODEL_OPTIONS[values.provider];
     try {
@@ -112,7 +115,10 @@ function App() {
         modelId: model.modelId,
         files: getNativeFiles(fileList),
       });
-      setCreatedTask(task);
+      workspaceState.registerTask(task);
+      setFileList([]);
+      setUploadErrorMessage(null);
+      form.setFieldValue("task", "");
     } catch (error) {
       setErrorMessage(
         error instanceof ApiClientError ? error.message : "提交失败，请稍后重试",
@@ -203,7 +209,6 @@ function App() {
               requiredMark={false}
               onFinish={(values) => void submitResearch(values)}
               onValuesChange={() => {
-                setCreatedTask(null);
                 setErrorMessage(null);
               }}
             >
@@ -220,13 +225,13 @@ function App() {
                   rows={4}
                   maxLength={4000}
                   showCount
-                  disabled={submitting}
+                  disabled={controlsDisabled}
                   placeholder="例如：调研 RAG 系统中的幻觉问题，比较主流缓解方案并给出实践建议。"
                 />
               </Form.Item>
 
               <Form.Item label="选择研究模型" name="provider">
-                <Radio.Group className="model-grid" disabled={submitting}>
+                <Radio.Group className="model-grid" disabled={controlsDisabled}>
                   {(Object.entries(MODEL_OPTIONS) as [ModelProvider, (typeof MODEL_OPTIONS)[ModelProvider]][]).map(
                     ([provider, option]) => (
                       <Radio.Button key={provider} value={provider} className="model-option">
@@ -259,6 +264,15 @@ function App() {
                   <p className="ant-upload-text">点击或拖入研究资料</p>
                   <p className="ant-upload-hint">文件将在开始研究时上传，仅用于本次研究</p>
                 </Dragger>
+                {uploadErrorMessage && (
+                  <Alert
+                    className="upload-alert"
+                    type="warning"
+                    showIcon
+                    title="资料添加失败"
+                    description={uploadErrorMessage}
+                  />
+                )}
               </Form.Item>
 
               {errorMessage && (
@@ -271,23 +285,6 @@ function App() {
                   role="alert"
                 />
               )}
-              {createdTask && (
-                <Alert
-                  className="result-alert"
-                  type="success"
-                  showIcon
-                  title="研究任务已创建"
-                  description={
-                    <Space orientation="vertical" size={2}>
-                      <span>{createdTask.message}</span>
-                      <Text type="secondary" copyable={{ text: createdTask.id }}>
-                        任务编号：{createdTask.id}
-                      </Text>
-                    </Space>
-                  }
-                />
-              )}
-
               <Button
                 className="submit-button"
                 type="primary"
@@ -295,11 +292,15 @@ function App() {
                 size="large"
                 block
                 loading={submitting}
-                disabled={submitting}
+                disabled={controlsDisabled}
                 iconPlacement="end"
                 icon={<ArrowRightOutlined />}
               >
-                {submitting ? "正在上传资料并创建任务" : "开始深度研究"}
+                {submitting
+                  ? "正在上传资料并创建任务"
+                  : workspaceState.hasActiveTask
+                    ? "当前研究正在进行"
+                    : "开始深度研究"}
               </Button>
             </Form>
 
@@ -309,6 +310,36 @@ function App() {
             </div>
           </section>
         </main>
+
+        <section className="task-dashboard" aria-label="研究任务工作区">
+          <div className="dashboard-heading">
+            <div>
+              <Text className="step-label">研究工作区</Text>
+              <Title level={2}>跟踪任务，查看最终报告</Title>
+            </div>
+            <span className="step-number">02</span>
+          </div>
+          <div className="dashboard-grid">
+            <TaskWorkspace
+              task={workspaceState.selectedTask}
+              report={workspaceState.report}
+              loadingReport={workspaceState.loadingReport}
+              cancelling={workspaceState.cancelling}
+              workspaceError={workspaceState.workspaceError}
+              reportError={workspaceState.reportError}
+              pollingStopped={workspaceState.pollingStopped}
+              onCancel={() => void workspaceState.cancelSelectedTask()}
+              onRetry={() => void workspaceState.retrySelectedTask()}
+            />
+            <RecentTasks
+              tasks={workspaceState.tasks}
+              selectedTaskId={workspaceState.selectedTask?.id ?? null}
+              loading={workspaceState.loadingHistory}
+              onSelect={workspaceState.selectTask}
+              onRefresh={() => void workspaceState.refreshTasks()}
+            />
+          </div>
+        </section>
       </div>
     </ConfigProvider>
   );

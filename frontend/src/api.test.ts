@@ -1,7 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import "./test/setup";
-import { createResearchTask } from "./api";
+import {
+  cancelResearchTask,
+  createResearchTask,
+  getResearchReport,
+  getResearchTask,
+  listResearchTasks,
+  researchReportUrl,
+} from "./api";
 
 const taskResponse = {
   id: "task-001",
@@ -101,5 +108,41 @@ describe("研究接口客户端", () => {
       code: "service_unavailable",
       message: "无法连接研究服务，请确认后端已经启动",
     });
+  });
+
+  it("支持最近任务、详情、取消和报告接口", async () => {
+    const fetchMock = vi.mocked(fetch);
+    fetchMock
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ items: [taskResponse] }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(taskResponse), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ ...taskResponse, stage: "cancelling" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(new Response("# 研究报告", { status: 200 }));
+
+    expect(await listResearchTasks(5)).toHaveLength(1);
+    expect((await getResearchTask("task-001")).id).toBe("task-001");
+    expect((await cancelResearchTask("task-001")).stage).toBe("cancelling");
+    expect(await getResearchReport("task-001")).toBe("# 研究报告");
+    expect(researchReportUrl("task-001")).toBe("/api/tasks/task-001/report");
+    expect(fetchMock.mock.calls.map(([input]) => input)).toEqual([
+      "/api/tasks?limit=5",
+      "/api/tasks/task-001",
+      "/api/tasks/task-001/cancel",
+      "/api/tasks/task-001/report",
+    ]);
   });
 });

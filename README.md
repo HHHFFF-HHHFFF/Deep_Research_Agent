@@ -37,10 +37,13 @@
 - React + TypeScript + Vite 单页研究输入界面
 - Ant Design 主题表单、Qwen／DeepSeek 选择和响应式布局
 - 可选资料上传、任务创建、重复提交保护和中文错误反馈
+- 1.5 秒任务状态轮询、协作式取消与异常自动暂停
+- 最近 8 个任务、刷新恢复、运行时间与安全错误展示
+- react-markdown 安全报告预览和 Markdown 下载
 - P1-M1 全仓 Ruff 规范清理
 - P1-M2a 至 P1-M2d 高价值类型修复
 
-稳定 Web 界面正在按阶段实现。W3 研究输入、文件上传和任务创建已经完成；下一步 W4 将接入状态轮询、取消、报告查看下载和最近任务恢复。
+稳定 Web 界面的完整研究闭环已经完成。当前已完成 W4 状态轮询、取消、报告查看下载和最近任务恢复；下一步 W5 将对上传文件与现有 RAG 做真实格式验收，不扩张主体功能。
 
 ## 目标技术栈
 
@@ -51,14 +54,14 @@
 | 元数据 | SQLite、SQLAlchemy 2 | 保存任务、文件和报告元数据，支持刷新恢复 |
 | 前端 | React、TypeScript、Vite | 稳定的单页用户界面 |
 | 组件 | Ant Design | 表单、上传、状态反馈和响应式布局 |
-| 报告展示 | react-markdown（W4） | 安全展示 Markdown，不启用原始 HTML |
+| 报告展示 | react-markdown | 安全展示 Markdown，不启用原始 HTML |
 | 配置 | MMEngine Config、python-dotenv | 配置合并和本地密钥读取 |
 | 大模型 | Qwen、DeepSeek、OpenAI 兼容接口 | 工具调用、分析和报告生成 |
 | 网页研究 | Crawl4AI、DDGS、HTTPX | 网页搜索、抓取和解析 |
 | 本地 RAG | FAISS、Qwen Embedding | 本地文档向量索引与 Top-K 检索 |
 | 质量检查 | pytest、Ruff、mypy、前端类型检查与组件测试 | 离线验证后端与关键交互 |
 
-FastAPI、SQLite、单进程任务管理以及 React、Vite、Ant Design 研究输入界面均已落地。现有 Agent、命令行、本地 RAG、后端接口和任务提交页面均可运行。
+FastAPI、SQLite、单进程任务管理以及 React、Vite、Ant Design 单页界面均已落地。现有 Agent、命令行、本地 RAG、后端接口、任务闭环和报告页面均可运行。
 
 ## 目标架构
 
