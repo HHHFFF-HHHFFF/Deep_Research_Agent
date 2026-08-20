@@ -30,9 +30,21 @@ from src.api.task_manager import (
     ResearchRunner,
     ResearchTaskManager,
     TaskBusyError,
+    TaskFileLimitError,
     TaskNotFoundError,
     TaskStateError,
     UnknownFileError,
+)
+from src.document_parser import (
+    DOCUMENT_PARSE_TIMEOUT_SECONDS,
+    MAX_PARSED_DOCUMENT_CHARACTERS,
+    SUPPORTED_DOCUMENT_EXTENSIONS,
+    DocumentContentTooLargeError,
+    DocumentParseError,
+    DocumentParseTimeoutError,
+    EmptyDocumentError,
+    parse_local_document,
+    parsed_cache_path,
 )
 from src.research_runner import run_research
 
@@ -48,7 +60,10 @@ class ApiSettings:
     upload_dir: Path = DEFAULT_WEB_ROOT / "uploads"
     report_dir: Path = DEFAULT_WEB_ROOT / "reports"
     max_upload_bytes: int = 10 * 1024 * 1024
-    upload_extensions: frozenset[str] = frozenset({".md", ".txt", ".pdf", ".docx"})
+    max_task_upload_bytes: int = 25 * 1024 * 1024
+    parse_timeout_seconds: float = DOCUMENT_PARSE_TIMEOUT_SECONDS
+    max_parsed_characters: int = MAX_PARSED_DOCUMENT_CHARACTERS
+    upload_extensions: frozenset[str] = SUPPORTED_DOCUMENT_EXTENSIONS
 
 
 class ApiError(RuntimeError):
@@ -91,6 +106,7 @@ def _task_response(
         message=record.message,
         error_message=record.error_message,
         files=[_file_response(file) for file in files],
+        rag_enabled=bool(files),
         report_available=(
             record.status is TaskStatus.SUCCEEDED and record.report_path is not None
         ),
@@ -111,6 +127,7 @@ def create_app(
         database=database,
         report_dir=app_settings.report_dir,
         runner=runner,
+        max_task_file_bytes=app_settings.max_task_upload_bytes,
     )
     application_logger = logging.getLogger(__name__)
 
@@ -132,7 +149,7 @@ def create_app(
     app = FastAPI(
         title="深度研究智能体 API",
         description="本地单用户深度研究助手的任务与报告接口。",
-        version="0.2.0",
+        version="0.3.0",
         lifespan=lifespan,
     )
     app.state.settings = app_settings
@@ -206,6 +223,37 @@ def create_app(
                     await output.write(chunk)
             if size == 0:
                 raise ApiError(400, "empty_file", "上传文件不能为空")
+            try:
+                await parse_local_document(
+                    stored_path,
+                    timeout_seconds=app_settings.parse_timeout_seconds,
+                    max_characters=app_settings.max_parsed_characters,
+                    cache_result=True,
+                )
+            except EmptyDocumentError as error:
+                raise ApiError(
+                    400,
+                    "empty_document",
+                    "文档解析后没有可用于研究的文字",
+                ) from error
+            except DocumentParseTimeoutError as error:
+                raise ApiError(
+                    400,
+                    "document_parse_timeout",
+                    "文档解析超时，请缩小文件后重试",
+                ) from error
+            except DocumentContentTooLargeError as error:
+                raise ApiError(
+                    400,
+                    "document_content_too_large",
+                    "文档文字内容过长，请缩小文件后重试",
+                ) from error
+            except DocumentParseError as error:
+                raise ApiError(
+                    400,
+                    "invalid_document",
+                    "文档格式无效或内容无法解析",
+                ) from error
             record = database.create_file(
                 file_id=file_id,
                 original_name=original_name,
@@ -214,6 +262,7 @@ def create_app(
             )
         except Exception:
             stored_path.unlink(missing_ok=True)
+            parsed_cache_path(stored_path).unlink(missing_ok=True)
             raise
         finally:
             await file.close()
@@ -234,6 +283,8 @@ def create_app(
             raise ApiError(409, "invalid_task_state", str(error)) from error
         except UnknownFileError as error:
             raise ApiError(400, "unknown_file", str(error)) from error
+        except TaskFileLimitError as error:
+            raise ApiError(400, "task_files_too_large", str(error)) from error
         return _task_response(database, record)
 
     @app.get("/api/tasks", response_model=TaskListResponse)

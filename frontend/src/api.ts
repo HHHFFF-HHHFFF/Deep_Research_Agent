@@ -25,6 +25,7 @@ export interface ResearchTask {
   message: string;
   error_message: string | null;
   files: UploadedFile[];
+  rag_enabled: boolean;
   report_available: boolean;
   created_at: string;
   started_at: string | null;

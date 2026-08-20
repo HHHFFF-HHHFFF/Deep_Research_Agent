@@ -59,8 +59,11 @@ export function useResearchWorkspace(options: ResearchWorkspaceOptions = {}) {
   const [pollingStopped, setPollingStopped] = useState(false);
   const mountedRef = useRef(true);
 
-  useEffect(() => () => {
-    mountedRef.current = false;
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
   }, []);
 
   const applyTask = useCallback((task: ResearchTask) => {

@@ -276,6 +276,20 @@ button, input, textarea { font: inherit; }
 }
 .task-meta-grid small { color: #7b8d9a; font-size: 11px; }
 .task-meta-grid strong { overflow: hidden; color: #29475c; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.task-files {
+  margin-top: 12px;
+  padding: 12px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: start;
+  gap: 10px;
+  color: #52667a;
+  background: #f5f9fa;
+  border-radius: 10px;
+}
+.task-files small { padding-top: 3px; white-space: nowrap; }
+.task-files > div { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.task-files .ant-tag { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .stage-message {
   margin: 16px 0;
   padding: 12px 14px;

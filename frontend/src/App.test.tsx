@@ -25,6 +25,7 @@ function taskResponse(overrides: Partial<ResearchTask> = {}): ResearchTask {
     message: "研究任务已创建，正在等待执行",
     error_message: null,
     files: [],
+    rag_enabled: false,
     report_available: false,
     created_at: "2026-08-19T00:00:00Z",
     started_at: null,
@@ -115,6 +116,13 @@ describe("研究输入与任务工作区", () => {
       status: "succeeded",
       stage: "completed",
       message: "研究报告已经生成",
+      files: [{
+        id: "file-001",
+        name: "本地证据.pdf",
+        size: 1024,
+        created_at: "2026-08-19T00:00:00Z",
+      }],
+      rag_enabled: true,
       report_available: true,
       started_at: "2026-08-19T00:00:01Z",
       finished_at: "2026-08-19T00:00:06Z",
@@ -136,6 +144,9 @@ describe("研究输入与任务工作区", () => {
       { timeout: 5_000 },
     )).toBeInTheDocument();
     expect(screen.getByText("报告正文")).toBeInTheDocument();
+    expect(screen.getByText("本地 RAG")).toBeInTheDocument();
+    expect(screen.getByText("已启用")).toBeInTheDocument();
+    expect(screen.getByText("本地证据.pdf")).toBeInTheDocument();
     expect(screen.queryByText("恶意脚本")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /下载 Markdown/ })).toHaveAttribute(
       "href",

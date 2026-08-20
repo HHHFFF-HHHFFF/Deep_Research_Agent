@@ -277,25 +277,10 @@ class Agent(BaseModel):
 
     async def _extract_file_content(self, file: str) -> dict[str, Any]:
         """将本地文件转换为可供 RAG 切分的 Markdown 文本。"""
-        from src.tool.server import tcp
+        from src.document_parser import parse_local_document
 
         info = get_file_info(file)
-
-        # 处理文件与路径。
-        input_payload: dict[str, Any] = {
-            "name": "mdify",
-            "input": {
-                "file_path": file,
-                "output_format": "markdown",
-            },
-        }
-        tool_response = await tcp(**input_payload)
-        if not tool_response.success:
-            raise RuntimeError(f"本地文件解析失败：{tool_response.message}")
-        file_content = tool_response.message
-        if not file_content or not file_content.strip():
-            raise RuntimeError("本地文件解析结果为空")
-        info["content"] = file_content
+        info["content"] = await parse_local_document(file)
 
         return info
 

@@ -1,4 +1,5 @@
 import { renderHook, waitFor } from "@testing-library/react";
+import { StrictMode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import "./test/setup";
@@ -24,6 +25,7 @@ function taskResponse(overrides: Partial<ResearchTask> = {}): ResearchTask {
     message: "正在执行研究",
     error_message: null,
     files: [],
+    rag_enabled: false,
     report_available: false,
     created_at: "2026-08-19T00:00:00Z",
     started_at: "2026-08-19T00:00:01Z",
@@ -66,6 +68,20 @@ describe("研究工作区状态管理", () => {
     );
     expect(detailCalls).toHaveLength(1);
     unmount();
+  });
+
+  it("React 严格模式重新挂载后仍能结束最近任务加载", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).startsWith("/api/tasks?")) return jsonResponse({ items: [] });
+      throw new Error(`未处理的测试请求：${String(input)}`);
+    }));
+
+    const { result } = renderHook(() => useResearchWorkspace(), {
+      wrapper: StrictMode,
+    });
+
+    await waitFor(() => expect(result.current.loadingHistory).toBe(false));
+    expect(result.current.workspaceError).toBeNull();
   });
 
   it("连续连接失败三次后暂停轮询", async () => {

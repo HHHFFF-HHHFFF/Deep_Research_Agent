@@ -88,6 +88,7 @@ class TaskResponse(BaseModel):
     message: str
     error_message: str | None = None
     files: list[UploadedFileResponse] = Field(default_factory=list)
+    rag_enabled: bool = False
     report_available: bool = False
     created_at: datetime
     started_at: datetime | None = None

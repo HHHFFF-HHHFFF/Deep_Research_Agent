@@ -53,6 +53,7 @@ const MODEL_OPTIONS: Record<
 const ALLOWED_EXTENSIONS = [".md", ".txt", ".pdf", ".docx"];
 const MAX_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_FILE_COUNT = 5;
+const MAX_TOTAL_FILE_BYTES = 25 * 1024 * 1024;
 
 interface ResearchFormValues {
   task: string;
@@ -105,6 +106,11 @@ function App() {
 
   const submitResearch = async (values: ResearchFormValues) => {
     if (submitting || workspaceState.hasActiveTask) return;
+    const nativeFiles = getNativeFiles(fileList);
+    if (nativeFiles.reduce((total, file) => total + file.size, 0) > MAX_TOTAL_FILE_BYTES) {
+      setUploadErrorMessage("单次研究的资料总量不能超过 25 MB");
+      return;
+    }
     setSubmitting(true);
     setErrorMessage(null);
     const model = MODEL_OPTIONS[values.provider];
@@ -113,7 +119,7 @@ function App() {
         task: values.task,
         modelProvider: values.provider,
         modelId: model.modelId,
-        files: getNativeFiles(fileList),
+        files: nativeFiles,
       });
       workspaceState.registerTask(task);
       setFileList([]);
@@ -257,7 +263,7 @@ function App() {
                     本地资料 <Text type="secondary">（可选）</Text>
                   </span>
                 }
-                extra="支持 Markdown、TXT、PDF、DOCX；最多 5 个，单个不超过 10 MB。"
+                extra="支持 Markdown、TXT、PDF、DOCX；最多 5 个，单个不超过 10 MB，总量不超过 25 MB；每个文件解析后最多 20 万个字符。"
               >
                 <Dragger {...uploadProps} className="file-dragger">
                   <p className="ant-upload-drag-icon"><InboxOutlined /></p>

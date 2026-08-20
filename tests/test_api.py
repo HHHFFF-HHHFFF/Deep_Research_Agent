@@ -60,13 +60,19 @@ async def successful_runner(
     )
 
 
-def _settings(tmp_path: Path, name: str = "web", max_bytes: int = 1024) -> ApiSettings:
+def _settings(
+    tmp_path: Path,
+    name: str = "web",
+    max_bytes: int = 1024,
+    max_task_bytes: int = 25 * 1024 * 1024,
+) -> ApiSettings:
     root = tmp_path / name
     return ApiSettings(
         database_path=root / "research.db",
         upload_dir=root / "uploads",
         report_dir=root / "reports",
         max_upload_bytes=max_bytes,
+        max_task_upload_bytes=max_task_bytes,
     )
 
 
@@ -195,11 +201,13 @@ async def test_upload_is_validated_and_passed_as_server_path(
         )
         assert created.status_code == 202
         await asyncio.wait_for(received.wait(), timeout=2)
-        await _wait_for_status(
+        completed = await _wait_for_status(
             test_client,
             created.json()["id"],
             {TaskStatus.SUCCEEDED.value},
         )
+        assert completed["rag_enabled"] is True
+        assert [file["name"] for file in completed["files"]] == ["资料.md"]
 
     server_path = Path(captured["files"][0]).resolve()
     assert server_path.parent == settings.upload_dir.resolve()
@@ -234,6 +242,61 @@ async def test_invalid_uploads_return_stable_errors(
         assert response.status_code == 400
         assert response.json()["error"]["code"] == error_code
     assert list(settings.upload_dir.glob("*")) == []
+
+
+@pytest.mark.parametrize(
+    ("filename", "content", "error_code"),
+    [
+        ("空白.txt", b"  \n\t", "empty_document"),
+        ("伪造.pdf", b"not a pdf", "invalid_document"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_unusable_document_content_is_rejected_during_upload(
+    tmp_path: Path,
+    filename: str,
+    content: bytes,
+    error_code: str,
+) -> None:
+    """非零字节但无法提取文字的文档必须在创建任务前被拒绝。"""
+    settings = _settings(tmp_path, name=error_code)
+    app = create_app(settings, runner=successful_runner)
+    async with _app_client(app) as test_client:
+        response = await test_client.post(
+            "/api/files",
+            files={"file": (filename, content, "application/octet-stream")},
+        )
+        assert response.status_code == 400
+        assert response.json()["error"]["code"] == error_code
+    assert list(settings.upload_dir.glob("*")) == []
+
+
+@pytest.mark.asyncio
+async def test_task_rejects_files_over_total_size_limit(tmp_path: Path) -> None:
+    """单文件都合法时，任务仍需限制资料总量。"""
+    settings = _settings(
+        tmp_path,
+        name="total-limit",
+        max_bytes=10,
+        max_task_bytes=6,
+    )
+    app = create_app(settings, runner=successful_runner)
+    async with _app_client(app) as test_client:
+        first = await test_client.post(
+            "/api/files",
+            files={"file": ("一.md", b"1234", "text/markdown")},
+        )
+        second = await test_client.post(
+            "/api/files",
+            files={"file": ("二.md", b"5678", "text/markdown")},
+        )
+        response = await test_client.post(
+            "/api/tasks",
+            json=_task_payload(file_ids=[first.json()["id"], second.json()["id"]]),
+        )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "task_files_too_large"
 
 
 @pytest.mark.asyncio

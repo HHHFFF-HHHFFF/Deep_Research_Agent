@@ -127,8 +127,16 @@ export function TaskWorkspace({
               <span><small>当前阶段</small><strong>{STAGE_LABELS[task.stage] ?? task.message}</strong></span>
               <span><small>运行时间</small><strong>{duration}</strong></span>
               <span><small>研究模型</small><strong>{task.actual_model_name ?? task.model_id}</strong></span>
-              <span><small>本地资料</small><strong>{task.files.length ? `${task.files.length} 个文件` : "未使用"}</strong></span>
+              <span><small>本地 RAG</small><strong>{task.rag_enabled ? "已启用" : "未启用"}</strong></span>
             </div>
+            {task.files.length > 0 && (
+              <div className="task-files">
+                <small>已使用资料</small>
+                <div>
+                  {task.files.map((file) => <Tag key={file.id}>{file.name}</Tag>)}
+                </div>
+              </div>
+            )}
             <div className={`stage-message${isTaskActive(task) ? " stage-message-active" : ""}`}>
               <span className="stage-dot" aria-hidden="true" />
               <span>{task.message}</span>

@@ -34,6 +34,10 @@ class UnknownFileError(RuntimeError):
     """表示请求引用了不存在的上传文件。"""
 
 
+class TaskFileLimitError(RuntimeError):
+    """表示一次研究引用的文件总量超过个人项目限制。"""
+
+
 class ResearchRunner(Protocol):
     """W1 研究运行入口在 W2 中使用的最小协议。"""
 
@@ -54,10 +58,12 @@ class ResearchTaskManager:
         database: ResearchDatabase,
         report_dir: Path,
         runner: ResearchRunner = run_research,
+        max_task_file_bytes: int = 25 * 1024 * 1024,
     ):
         self.database = database
         self.report_dir = report_dir.resolve()
         self.runner = runner
+        self.max_task_file_bytes = max_task_file_bytes
         self._lock = asyncio.Lock()
         self._active_task_id: str | None = None
         self._active_task: asyncio.Task[None] | None = None
@@ -83,6 +89,11 @@ class ResearchTaskManager:
             files = self.database.get_files(file_ids)
             if len(files) != len(file_ids):
                 raise UnknownFileError("请求中包含不存在的上传文件")
+            if sum(file.size for file in files) > self.max_task_file_bytes:
+                limit_mb = self.max_task_file_bytes / (1024 * 1024)
+                raise TaskFileLimitError(
+                    f"单次研究使用的资料总量不能超过 {limit_mb:g} MB"
+                )
 
             task_id = str(uuid4())
             record = self.database.create_task(
@@ -210,6 +221,7 @@ __all__ = [
     "ResearchRunner",
     "ResearchTaskManager",
     "TaskBusyError",
+    "TaskFileLimitError",
     "TaskNotFoundError",
     "TaskStateError",
     "UnknownFileError",
