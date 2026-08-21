@@ -1,6 +1,7 @@
 import os
 from argparse import Namespace
 
+from dotenv import load_dotenv
 from mmengine import Config as MMConfig
 
 from src.utils import Singleton, assemble_project_path
@@ -18,6 +19,8 @@ def _split_model_list(value: str) -> list[str]:
 
 def get_environment_model_options() -> dict[str, object]:
     """读取模型环境变量，配置文件与命令行仍可继续覆盖。"""
+    # Web 入口不会像命令行脚本那样预先加载 .env，因此在读取前统一加载。
+    load_dotenv(verbose=False)
     scalar_mapping = {
         "MODEL_PROVIDER": "model_provider",
         "MODEL_NAME": "model_id",

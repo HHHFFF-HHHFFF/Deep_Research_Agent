@@ -2,7 +2,7 @@
 
 当前测试覆盖：
 
-1. Qwen／DeepSeek 模型配置、路由、降级与序列化
+1. Qwen／DeepSeek 场景配置继承、环境变量加载、路由、降级与序列化
 2. 研究请求、统一运行入口、阶段回调、取消和错误脱敏
 3. Markdown／TXT／PDF／DOCX 真实解析、缓存、内容哈希去重、虚拟 Embedding 和 FAISS 检索
 4. FastAPI 请求校验、统一错误、OpenAPI 文档和报告下载

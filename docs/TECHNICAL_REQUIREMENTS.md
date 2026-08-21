@@ -77,6 +77,8 @@
 - Qwen 使用 `DASHSCOPE_API_KEY` 和 `QWEN_BASE_URL`。
 - DeepSeek 使用 `DEEPSEEK_API_KEY` 和 `DEEPSEEK_API_BASE`。
 - 聊天模型和 Embedding 模型保持独立配置。
+- 命令行和 FastAPI 都必须在合并模型配置前加载项目根目录的 `.env`。
+- 研究场景配置必须完整继承基础聊天与 Embedding 字段，Web 只覆盖聊天模型时不得丢失向量模型默认值。
 - 选择 DeepSeek 聊天模型时，FAISS 仍可使用 Qwen `text-embedding-v4`。
 - 现有备用模型降级逻辑继续保留，但前端不暴露密钥和任意 Base URL。
 - 模型标识由后端白名单提供，不能由前端提交任意字符串。

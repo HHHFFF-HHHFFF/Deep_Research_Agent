@@ -1,9 +1,18 @@
+# ruff: noqa: F401
+# MMEngine 会把 read_base 中导入的变量合并为场景配置字段。
 from mmengine.config import read_base
 
 with read_base():
     from .agents.tool_calling import tool_calling_agent
     from .base import (
+        embedding_fallback_models,
+        embedding_model_id,
+        embedding_model_name,
+        embedding_provider,
+        fallback_models,
+        model_id,
         model_name,
+        model_provider,
     )
     from .environments.file_system import environment as file_system_environment
     from .memory.general_memory_system import memory_system as general_memory_system
