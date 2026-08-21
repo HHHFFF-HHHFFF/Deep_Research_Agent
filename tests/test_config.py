@@ -17,7 +17,7 @@ def test_scene_config_inherits_complete_model_defaults() -> None:
     config = MMConfig.fromfile(SCENE_CONFIG)
 
     assert config.model_provider == "qwen"
-    assert config.model_id == "qwen-plus"
+    assert config.model_id == "qwen3-max"
     assert config.embedding_provider == "qwen"
     assert config.embedding_model_id == "text-embedding-v4"
     assert config.embedding_model_name == "qwen/text-embedding-v4"

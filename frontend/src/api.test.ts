@@ -14,7 +14,7 @@ const taskResponse = {
   id: "task-001",
   task: "比较两种 RAG 方案",
   model_provider: "qwen",
-  model_id: "qwen-plus",
+  model_id: "qwen3-max",
   actual_model_name: null,
   status: "waiting",
   stage: "waiting",
@@ -57,7 +57,7 @@ describe("研究接口客户端", () => {
     const result = await createResearchTask({
       task: "  比较两种 RAG 方案  ",
       modelProvider: "qwen",
-      modelId: "qwen-plus",
+      modelId: "qwen3-max",
       files: [new File(["测试资料"], "资料.md", { type: "text/markdown" })],
     });
 
@@ -68,7 +68,7 @@ describe("研究接口客户端", () => {
     expect(JSON.parse(request.body as string)).toEqual({
       task: "比较两种 RAG 方案",
       model_provider: "qwen",
-      model_id: "qwen-plus",
+      model_id: "qwen3-max",
       file_ids: ["550e8400-e29b-41d4-a716-446655440000"],
     });
   });
@@ -102,7 +102,7 @@ describe("研究接口客户端", () => {
       createResearchTask({
         task: "新的研究主题",
         modelProvider: "qwen",
-        modelId: "qwen-plus",
+        modelId: "qwen3-max",
         files: [],
       }),
     ).rejects.toMatchObject({

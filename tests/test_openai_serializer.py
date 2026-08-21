@@ -55,7 +55,7 @@ def test_response_serializer_uses_distinct_message_payloads() -> None:
 
 def test_qwen_compatible_adapter_uses_max_tokens_parameter() -> None:
     model = ChatOpenAICompatible(
-        model="qwen-plus",
+        model="qwen3-max",
         provider_name="qwen",
         max_completion_tokens=2048,
     )

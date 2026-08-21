@@ -26,7 +26,7 @@ def isolate_provider_environment(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.fixture
 def settings() -> ModelRuntimeSettings:
     return ModelRuntimeSettings(
-        primary_model="qwen/qwen-plus",
+        primary_model="qwen/qwen3-max",
         fallback_models=["deepseek/deepseek-v4-flash"],
         embedding_model="qwen/text-embedding-v4",
     )
@@ -39,7 +39,7 @@ async def test_failed_response_uses_fallback(settings: ModelRuntimeSettings) -> 
 
     primary = FailingModel()
     fallback = DeterministicChatModel("备用模型成功")
-    manager.model_clients["qwen/qwen-plus"] = primary
+    manager.model_clients["qwen/qwen3-max"] = primary
     manager.model_clients["deepseek/deepseek-v4-flash"] = fallback
 
     result = await manager.achat([HumanMessage(content="测试")])
@@ -76,17 +76,17 @@ async def test_manager_only_registers_configured_models(
     await manager.initialize(settings)
 
     assert await manager.list() == [
-        "qwen/qwen-plus",
+        "qwen/qwen3-max",
         "deepseek/deepseek-v4-flash",
         "qwen/text-embedding-v4",
     ]
-    qwen_config = await manager.get_model_config("qwen/qwen-plus")
+    qwen_config = await manager.get_model_config("qwen/qwen3-max")
     deepseek_config = await manager.get_model_config("deepseek/deepseek-v4-flash")
     assert qwen_config is not None
     assert deepseek_config is not None
     assert qwen_config.api_base == "https://dashscope.aliyuncs.com/compatible-mode/v1"
     assert deepseek_config.api_base == "https://api.deepseek.com"
-    assert isinstance(manager.model_clients["qwen/qwen-plus"], ChatOpenAICompatible)
+    assert isinstance(manager.model_clients["qwen/qwen3-max"], ChatOpenAICompatible)
     assert isinstance(
         manager.model_clients["deepseek/deepseek-v4-flash"],
         ChatOpenAICompatible,
@@ -96,7 +96,7 @@ async def test_manager_only_registers_configured_models(
 @pytest.mark.asyncio
 async def test_compatible_adapter_uses_max_tokens() -> None:
     client = ChatOpenAICompatible(
-        model="qwen-plus",
+        model="qwen3-max",
         provider_name="qwen",
         api_key="仅用于离线测试",
         max_completion_tokens=321,

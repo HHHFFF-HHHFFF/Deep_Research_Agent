@@ -31,7 +31,7 @@ def stub_runtime(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
         captured["config_path"] = config_path
         captured["cfg_options"] = cfg_options
         return research_runner._RuntimeSettings(
-            model_name="qwen/qwen-plus",
+            model_name="qwen/qwen3-max",
             report_base_dir=None,
         )
 
@@ -49,7 +49,7 @@ async def test_run_research_returns_report_and_emits_stages(
         task="  调研多文档 RAG  ",
         files=["资料一.pdf"],
         model_provider="qwen",
-        model_id="qwen-plus",
+        model_id="qwen3-max",
     )
     stages: list[ResearchStage] = []
 
@@ -75,7 +75,7 @@ async def test_run_research_returns_report_and_emits_stages(
 
     assert result.task == "调研多文档 RAG"
     assert result.report.startswith("# 研究报告")
-    assert result.model_name == "qwen/qwen-plus"
+    assert result.model_name == "qwen/qwen3-max"
     assert result.files == ["资料一.pdf"]
     assert result.session_id
     assert result.report_path is None

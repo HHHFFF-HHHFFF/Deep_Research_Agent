@@ -38,7 +38,7 @@ const MODEL_OPTIONS: Record<
 > = {
   qwen: {
     title: "Qwen",
-    modelId: "qwen-plus",
+    modelId: "qwen3-max",
     description: "适合中文研究与工具调用",
     mark: "Q",
   },

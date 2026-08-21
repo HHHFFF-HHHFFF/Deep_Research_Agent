@@ -8,14 +8,14 @@ from src.model.settings import PROVIDERS, ModelRuntimeSettings, split_model_refe
 def test_from_env_separates_chat_and_embedding(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("MODEL_PROVIDER", "deepseek")
     monkeypatch.setenv("MODEL_NAME", "deepseek-v4-flash")
-    monkeypatch.setenv("MODEL_FALLBACKS", "qwen/qwen-plus")
+    monkeypatch.setenv("MODEL_FALLBACKS", "qwen/qwen3-max")
     monkeypatch.setenv("EMBEDDING_PROVIDER", "qwen")
     monkeypatch.setenv("EMBEDDING_MODEL", "text-embedding-v4")
 
     settings = ModelRuntimeSettings.from_env()
 
     assert settings.primary_model == "deepseek/deepseek-v4-flash"
-    assert settings.fallback_models == ["qwen/qwen-plus"]
+    assert settings.fallback_models == ["qwen/qwen3-max"]
     assert settings.embedding_model == "qwen/text-embedding-v4"
 
 

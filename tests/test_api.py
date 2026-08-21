@@ -81,7 +81,7 @@ def _task_payload(**overrides: Any) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "task": "调研本地 RAG 的稳定性",
         "model_provider": "qwen",
-        "model_id": "qwen-plus",
+        "model_id": "qwen3-max",
         "file_ids": [],
     }
     payload.update(overrides)
@@ -184,7 +184,7 @@ async def test_successful_task_can_be_polled_and_downloaded(
 
     completed = await _wait_for_status(client, task_id, {TaskStatus.SUCCEEDED.value})
     assert completed["stage"] == "completed"
-    assert completed["actual_model_name"] == "qwen/qwen-plus"
+    assert completed["actual_model_name"] == "qwen/qwen3-max"
     assert completed["report_available"] is True
 
     report = await client.get(f"/api/tasks/{task_id}/report")
@@ -454,7 +454,7 @@ async def test_startup_marks_stale_running_task_interrupted(tmp_path: Path) -> N
         task_id="22222222-2222-2222-2222-222222222222",
         task="调研服务重启恢复",
         model_provider="qwen",
-        model_id="qwen-plus",
+        model_id="qwen3-max",
         file_ids=[],
     )
     database.mark_running(stale.id)

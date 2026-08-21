@@ -114,7 +114,7 @@ def _split_csv(value: str | None) -> list[str]:
 class ModelRuntimeSettings(BaseModel):
     """控制本次运行使用的聊天模型、备用模型和向量模型。"""
 
-    primary_model: str = "qwen/qwen-plus"
+    primary_model: str = "qwen/qwen3-max"
     fallback_models: list[str] = Field(default_factory=list)
     embedding_model: str = "qwen/text-embedding-v4"
     embedding_fallback_models: list[str] = Field(default_factory=list)
@@ -148,7 +148,7 @@ class ModelRuntimeSettings(BaseModel):
     ) -> ModelRuntimeSettings:
         """读取环境变量，并允许命令行或配置文件覆盖关键模型。"""
         provider = os.getenv("MODEL_PROVIDER", "qwen")
-        model_id = os.getenv("MODEL_NAME", "qwen-plus")
+        model_id = os.getenv("MODEL_NAME", "qwen3-max")
         embedding_provider = os.getenv("EMBEDDING_PROVIDER", "qwen")
         embedding_model_id = os.getenv("EMBEDDING_MODEL", "text-embedding-v4")
 

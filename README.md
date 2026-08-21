@@ -147,7 +147,7 @@ python scripts/start_web.py
 
 ```env
 MODEL_PROVIDER=qwen
-MODEL_NAME=qwen-plus
+MODEL_NAME=qwen3-max
 EMBEDDING_PROVIDER=qwen
 EMBEDDING_MODEL=text-embedding-v4
 DASHSCOPE_API_KEY=你的密钥

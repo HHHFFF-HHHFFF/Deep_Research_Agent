@@ -18,7 +18,7 @@ function taskResponse(overrides: Partial<ResearchTask> = {}): ResearchTask {
     id: "polling-task",
     task: "轮询研究任务",
     model_provider: "qwen",
-    model_id: "qwen-plus",
+    model_id: "qwen3-max",
     actual_model_name: null,
     status: "running",
     stage: "researching",

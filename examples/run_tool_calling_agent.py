@@ -45,7 +45,7 @@ def parse_args():
         dest="model_provider",
         help="聊天模型提供方，例如 qwen 或 deepseek",
     )
-    parser.add_argument("--model", dest="model_id", help="聊天模型标识，例如 qwen-plus")
+    parser.add_argument("--model", dest="model_id", help="聊天模型标识，例如 qwen3-max")
     parser.add_argument(
         "--fallback-model",
         dest="fallback_models",

@@ -50,14 +50,14 @@ def test_research_request_normalizes_files_and_model_options() -> None:
         files=[" 资料.pdf ", "资料.pdf", "  "],
         model_provider="deepseek",
         model_id="deepseek-chat",
-        fallback_models=["qwen/qwen-plus", " qwen/qwen-plus "],
+        fallback_models=["qwen/qwen3-max", " qwen/qwen3-max "],
     )
 
     assert request.files == ["资料.pdf"]
-    assert request.fallback_models == ["qwen/qwen-plus"]
+    assert request.fallback_models == ["qwen/qwen3-max"]
 
     with pytest.raises(ValidationError, match="必须同时指定模型标识"):
         ResearchRequest(task="调研模型路由", model_provider="deepseek")
 
     with pytest.raises(ValidationError, match="提供方/模型"):
-        ResearchRequest(task="调研模型路由", fallback_models=["qwen-plus"])
+        ResearchRequest(task="调研模型路由", fallback_models=["qwen3-max"])

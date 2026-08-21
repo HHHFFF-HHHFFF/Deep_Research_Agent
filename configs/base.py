@@ -5,7 +5,7 @@ log_path = "base.log"
 use_local_proxy = False
 
 model_provider = "qwen"
-model_id = "qwen-plus"
+model_id = "qwen3-max"
 model_name = model_id if "/" in model_id else f"{model_provider}/{model_id}"
 fallback_models: list[str] = []
 
