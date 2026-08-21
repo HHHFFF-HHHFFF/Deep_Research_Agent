@@ -21,6 +21,7 @@ with read_base():
     from .tools.mdify import mdify_tool
     from .tools.reporter import reporter_tool
     from .tools.todo import todo_tool
+    from .tools.web_searcher import web_searcher_tool
 
 tag = "tool_calling_agent"
 workdir = f"workdir/{tag}"
@@ -62,9 +63,14 @@ deep_researcher_tool.update(
     base_dir="tool/deep_researcher",
 )
 
+web_searcher_tool.update(
+    model_name=model_name,
+)
+
 # 配置相关参数。
 deep_analyzer_tool.update(
     model_name=model_name,
+    file_model_name=model_name,
     base_dir="tool/deep_analyzer",
     require_grad=False,
 )
@@ -72,6 +78,7 @@ deep_analyzer_tool.update(
 # 配置相关参数。
 reporter_tool.update(
     base_dir="tool/reporter",
+    model_name=model_name,
     require_grad=False,
 )
 # 配置相关参数。

@@ -1,12 +1,12 @@
 """提供上下文管理相关实现。"""
 
 import asyncio
-import atexit
 import json
 import os
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
+from asyncio_atexit import register as async_atexit_register
 from pydantic import BaseModel, ConfigDict, Field
 
 if TYPE_CHECKING:
@@ -19,7 +19,7 @@ from src.dynamic import dynamic_manager
 from src.logger import logger
 from src.message.types import Message
 from src.prompt.types import Prompt, PromptConfig
-from src.registry import PROMPT
+from src.registry import PROMPT, load_builtin_components
 from src.utils import (
     assemble_project_path,
     gather_with_concurrency,
@@ -88,7 +88,7 @@ class PromptContextManager(BaseModel):
 
         # 清理并释放相关资源。
         if not self._cleanup_registered:
-            atexit.register(self.cleanup)
+            async_atexit_register(self.cleanup)
             self._cleanup_registered = True
 
     async def initialize(self, prompt_names: list[str] | None = None):
@@ -262,6 +262,8 @@ class PromptContextManager(BaseModel):
                     f"| ❌ Failed to register prompt class {prompt_cls.__name__}: {e}"
                 )
                 raise
+
+        load_builtin_components("prompt")
 
         # 注册相关组件。
         prompt_classes = list(PROMPT._module_dict.values())

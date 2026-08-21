@@ -21,6 +21,10 @@ def test_scene_config_inherits_complete_model_defaults() -> None:
     assert config.embedding_provider == "qwen"
     assert config.embedding_model_id == "text-embedding-v4"
     assert config.embedding_model_name == "qwen/text-embedding-v4"
+    assert config.web_searcher_tool["model_name"] == "qwen/qwen3-max"
+    assert config.deep_analyzer_tool["model_name"] == "qwen/qwen3-max"
+    assert config.deep_analyzer_tool["file_model_name"] == "qwen/qwen3-max"
+    assert config.reporter_tool["model_name"] == "qwen/qwen3-max"
     assert config.fallback_models == []
     assert config.embedding_fallback_models == []
 

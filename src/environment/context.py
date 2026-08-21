@@ -24,7 +24,7 @@ from src.environment.faiss.service import FaissService
 from src.environment.faiss.types import FaissAddRequest
 from src.environment.types import ActionConfig, Environment, EnvironmentConfig
 from src.logger import logger
-from src.registry import ENVIRONMENT
+from src.registry import ENVIRONMENT, load_builtin_components
 from src.session import SessionContext
 from src.utils import (
     assemble_project_path,
@@ -319,7 +319,7 @@ class EnvironmentContextManager(BaseModel):
                 )
                 raise
 
-        import src.environment  # noqa: F401
+        load_builtin_components("environment")
 
         # 注册相关组件。
         environment_classes = list(ENVIRONMENT._module_dict.values())

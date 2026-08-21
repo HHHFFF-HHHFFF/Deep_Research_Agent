@@ -21,7 +21,7 @@ from src.dynamic import dynamic_manager
 from src.environment.faiss.service import FaissService
 from src.environment.faiss.types import FaissAddRequest
 from src.logger import logger
-from src.registry import AGENT
+from src.registry import AGENT, load_builtin_components
 from src.session import SessionContext
 from src.utils import (
     assemble_project_path,
@@ -270,7 +270,7 @@ class AgentContextManager(BaseModel):
                 )
                 raise
 
-        import src.agent  # noqa: F401
+        load_builtin_components("agent")
 
         agent_classes = list(AGENT._module_dict.values())
         logger.info(f"| 🔍 Discovering {len(agent_classes)} agents from AGENT registry")

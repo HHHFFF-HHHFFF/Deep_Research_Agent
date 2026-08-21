@@ -20,7 +20,7 @@ from src.dynamic import dynamic_manager
 from src.environment.faiss.service import FaissService
 from src.environment.faiss.types import FaissAddRequest
 from src.logger import logger
-from src.registry import TOOL
+from src.registry import TOOL, load_builtin_components
 from src.session import SessionContext
 from src.tool.types import Tool, ToolConfig, ToolResponse
 from src.utils import (
@@ -259,7 +259,7 @@ class ToolContextManager(BaseModel):
                 )
                 raise
 
-        import src.tool  # noqa: F401
+        load_builtin_components("tool")
 
         # 注册相关组件。
         tool_classes = list(TOOL._module_dict.values())

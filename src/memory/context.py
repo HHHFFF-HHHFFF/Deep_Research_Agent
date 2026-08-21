@@ -19,7 +19,7 @@ from src.config import config
 from src.dynamic import dynamic_manager
 from src.logger import logger
 from src.memory.types import Memory, MemoryConfig
-from src.registry import MEMORY_SYSTEM
+from src.registry import MEMORY_SYSTEM, load_builtin_components
 from src.session import SessionContext
 from src.utils import (
     assemble_project_path,
@@ -263,7 +263,7 @@ class MemoryContextManager(BaseModel):
                 )
                 raise
 
-        import src.memory  # noqa: F401
+        load_builtin_components("memory")
 
         # 注册相关组件。
         memory_classes = list(MEMORY_SYSTEM._module_dict.values())

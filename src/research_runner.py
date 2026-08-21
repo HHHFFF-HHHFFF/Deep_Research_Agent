@@ -169,7 +169,7 @@ async def _initialize_runtime(
 
     logger.info("| 🎮 正在初始化运行环境……")
     await ecp.initialize(config.env_names)
-    logger.info(f"| ✅ 运行环境初始化完成：{ecp.list()}")
+    logger.info(f"| ✅ 运行环境初始化完成：{await ecp.list()}")
 
     logger.info("| 🤖 正在初始化智能体……")
     await acp.initialize(agent_names=config.agent_names)
