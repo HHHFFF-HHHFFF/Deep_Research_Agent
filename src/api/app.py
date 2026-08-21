@@ -13,6 +13,7 @@ import aiofiles
 from fastapi import FastAPI, File, Query, Request, UploadFile, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from src.api.database import ResearchDatabase, StoredFileRecord, TaskRecord
@@ -50,11 +51,12 @@ from src.research_runner import run_research
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_WEB_ROOT = PROJECT_ROOT / "workdir" / "web"
+DEFAULT_FRONTEND_DIST = PROJECT_ROOT / "frontend" / "dist"
 
 
 @dataclass(frozen=True)
 class ApiSettings:
-    """W2 后端保持可测试所需的少量路径与上传限制。"""
+    """后端保持可测试所需的路径、上传限制与静态页面目录。"""
 
     database_path: Path = DEFAULT_WEB_ROOT / "research.db"
     upload_dir: Path = DEFAULT_WEB_ROOT / "uploads"
@@ -64,6 +66,7 @@ class ApiSettings:
     parse_timeout_seconds: float = DOCUMENT_PARSE_TIMEOUT_SECONDS
     max_parsed_characters: int = MAX_PARSED_DOCUMENT_CHARACTERS
     upload_extensions: frozenset[str] = SUPPORTED_DOCUMENT_EXTENSIONS
+    frontend_dist_dir: Path | None = DEFAULT_FRONTEND_DIST
 
 
 class ApiError(RuntimeError):
@@ -342,6 +345,17 @@ def create_app(
             media_type="text/markdown; charset=utf-8",
             filename=f"research-{task_id}.md",
         )
+
+    frontend_dist_dir = app_settings.frontend_dist_dir
+    if frontend_dist_dir is not None:
+        frontend_root = frontend_dist_dir.resolve()
+        if (frontend_root / "index.html").is_file():
+            # API 路由先注册，根路径最后挂载前端构建，生产环境只需一个端口。
+            app.mount(
+                "/",
+                StaticFiles(directory=frontend_root, html=True),
+                name="frontend",
+            )
 
     return app
 

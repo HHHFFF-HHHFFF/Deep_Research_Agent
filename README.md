@@ -45,7 +45,7 @@
 - P1-M1 全仓 Ruff 规范清理
 - P1-M2a 至 P1-M2d 高价值类型修复
 
-稳定 Web 界面和真实格式本地 RAG 闭环已经完成。当前已完成 W5 上传解析校验、缓存、资源限制、文件详情和真实格式离线验收；下一步 W6 只进行质量、打包和简历材料整理，不扩张主体功能。
+W0 至 W6 已全部完成：稳定 Web 界面、真实格式本地 RAG、单端口生产启动、离线质量门禁、演示说明和架构文档已经形成闭环。项目进入可演示、可复现状态，主体功能不再扩张。
 
 ## 目标技术栈
 
@@ -94,6 +94,7 @@ configs/       研究场景与模型配置
 docs/          项目范围、技术需求和开发计划
 examples/      当前命令行入口
 frontend/      React、TypeScript、Vite 单页前端
+scripts/       单端口生产启动脚本
 src/
   api/         FastAPI、SQLite 和单任务管理
   application/ 研究输入、阶段和结果模型
@@ -109,6 +110,34 @@ tests/         离线测试
 ```
 
 前端通过 HTTP 复用现有 FastAPI 和研究核心，不会另建一套 Agent 或 RAG。
+
+## 界面预览
+
+![深度研究智能体 Web 界面](docs/images/web-interface.png)
+
+## 从零开始运行
+
+推荐使用 Python 3.10、Node.js 20.19 以上兼容版本和 pnpm。先安装开发环境所需依赖：
+
+```powershell
+python -m pip install -r requirements-dev.txt
+Copy-Item .env.template .env
+Set-Location frontend
+pnpm install
+Set-Location ..
+```
+
+随后编辑项目根目录的 `.env`，至少填写准备使用的聊天模型密钥；如果需要本地 RAG，还要填写 Embedding 模型密钥。
+
+生产演示只需一个命令：
+
+```powershell
+python scripts/start_web.py
+```
+
+脚本会在当前环境可以找到 pnpm 时先生成前端生产构建，再由 FastAPI 同时托管页面和 API。如果 PyCharm 的运行环境找不到 pnpm，或 pnpm 无法调用 Node.js，但 `frontend/dist` 已经存在，脚本会自动复用现有构建。浏览器打开 `http://127.0.0.1:8000`，接口文档仍位于 `http://127.0.0.1:8000/docs`。
+
+只安装运行依赖而不执行测试时，可改用 `requirements.txt`。
 
 ## 配置模型
 
@@ -138,7 +167,7 @@ DASHSCOPE_API_KEY=你的密钥
 
 模型标识可能随提供方更新，请以实际账号当前可用模型为准。
 
-## 当前运行方式
+## 其他运行方式
 
 ### 命令行
 
@@ -169,42 +198,57 @@ python examples/run_tool_calling_agent.py \
 
 本地 RAG 使用受限的 MarkItDown 解析入口，支持 Markdown、TXT、PDF 和 DOCX。通过 Web 上传的解析结果会缓存在项目运行目录并于研究阶段复用；命令行不会在用户资料旁写入缓存。单个文件解析后最多保留 20 万个字符，避免一次研究生成过多 Embedding 请求。
 
-### FastAPI 后端
+### 开发模式
 
-开发时启动单进程后端：
+开发时分别启动后端和前端，以保留 Vite 热更新。第一个终端执行：
 
 ```bash
 python -m uvicorn src.api.app:app --reload
 ```
 
-启动后可以访问：
+第二个终端执行：
+
+```powershell
+Set-Location frontend
+pnpm dev
+```
+
+浏览器打开 `http://127.0.0.1:5173`。开发服务器会把 `/api` 转发到 `http://127.0.0.1:8000`。
+
+后端可以访问：
 
 - API 文档：`http://127.0.0.1:8000/docs`
 - 健康检查：`http://127.0.0.1:8000/api/health`
 
 后端使用 `workdir/web/research.db` 保存任务元数据，上传文件和报告也保存在 `workdir/web/` 内。这些运行产物已经被 Git 忽略。当前架构只支持一个 Uvicorn worker 和一个活动研究任务。
 
-### React 前端
-
-前端需要 Node.js 20.19 以上兼容版本和 pnpm。在另一个终端中执行：
-
-```bash
-cd frontend
-pnpm install
-pnpm dev
-```
-
-浏览器打开 `http://127.0.0.1:5173`。开发服务器默认把 `/api` 转发到 `http://127.0.0.1:8000`，因此需要同时保持 FastAPI 后端运行。
-
 如需使用其他后端地址，复制 `frontend/.env.template` 为 `frontend/.env.local`，只配置 `VITE_API_BASE_URL`。API 密钥仍然只能放在项目根目录的后端 `.env` 中。
 
 Web 上传限制为最多 5 个文件、单文件不超过 10 MB、单次研究文件总量不超过 25 MB。服务器会校验 PDF／DOCX 文件结构和实际解析结果，空白、伪格式、超时或文字过长的资料不会进入 Agent。
+
+## 离线质量检查
+
+```powershell
+python -m pytest -q -p no:cacheprovider
+python -m ruff check .
+python -m ruff format --check .
+python -m mypy --no-incremental --follow-imports=skip --ignore-missing-imports src/application src/document_parser.py src/document_retriever.py src/api
+python -m compileall -q src examples scripts tests
+Set-Location frontend
+pnpm typecheck
+pnpm test
+pnpm build
+```
+
+mypy 当前聚焦 W1 至 W6 新增的稳定应用边界，不把低收益的历史框架类型问题伪装成已解决。所有测试均使用离线替身，不会调用真实模型或网页服务。
 
 ## 设计文档
 
 - [项目范围](docs/PROJECT_SCOPE.md)
 - [稳定 Web 前端开发计划](docs/DEVELOPMENT_PLAN.md)
 - [技术需求](docs/TECHNICAL_REQUIREMENTS.md)
+- [演示流程与故障排查](docs/DEMO_AND_TROUBLESHOOTING.md)
+- [架构与设计说明](docs/ARCHITECTURE.md)
 - [许可证中文说明](LICENSE_zh.md)
 
 ## 范围原则

@@ -1,0 +1,8 @@
+# 开发环境包含全部运行依赖与离线质量检查工具。
+-r requirements.txt
+
+pytest>=8.0,<9
+pytest-asyncio>=0.24,<1
+pytest-cov>=5.0,<7
+ruff>=0.9
+mypy>=1.14,<3

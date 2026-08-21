@@ -73,6 +73,7 @@ def _settings(
         report_dir=root / "reports",
         max_upload_bytes=max_bytes,
         max_task_upload_bytes=max_task_bytes,
+        frontend_dist_dir=None,
     )
 
 
@@ -136,6 +137,40 @@ async def test_health_docs_and_empty_task_list(client: httpx.AsyncClient) -> Non
     }
     assert (await client.get("/docs")).status_code == 200
     assert (await client.get("/api/tasks")).json() == {"items": []}
+
+
+@pytest.mark.asyncio
+async def test_production_build_and_api_share_one_origin(tmp_path: Path) -> None:
+    """生产构建应由 FastAPI 托管，同时不遮挡已有 API。"""
+    frontend_dir = tmp_path / "frontend-dist"
+    assets_dir = frontend_dir / "assets"
+    assets_dir.mkdir(parents=True)
+    (frontend_dir / "index.html").write_text(
+        "<!doctype html><title>深度研究智能体</title>",
+        encoding="utf-8",
+    )
+    (assets_dir / "app.js").write_text("console.log('ready')", encoding="utf-8")
+    settings = _settings(tmp_path, name="production")
+    settings = ApiSettings(
+        database_path=settings.database_path,
+        upload_dir=settings.upload_dir,
+        report_dir=settings.report_dir,
+        max_upload_bytes=settings.max_upload_bytes,
+        max_task_upload_bytes=settings.max_task_upload_bytes,
+        frontend_dist_dir=frontend_dir,
+    )
+
+    app = create_app(settings, runner=successful_runner)
+    async with _app_client(app) as test_client:
+        page = await test_client.get("/")
+        asset = await test_client.get("/assets/app.js")
+        health = await test_client.get("/api/health")
+
+    assert page.status_code == 200
+    assert "深度研究智能体" in page.text
+    assert asset.status_code == 200
+    assert "ready" in asset.text
+    assert health.status_code == 200
 
 
 @pytest.mark.asyncio

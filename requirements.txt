@@ -1,4 +1,4 @@
-# 项目运行与开发依赖。
+# 项目运行依赖。开发检查工具单独放在 requirements-dev.txt。
 
 # 核心运行时
 pydantic>=2.7,<3
@@ -43,10 +43,3 @@ rich>=13.9,<15
 faiss-cpu>=1.9
 numpy>=1.26,<3
 diskcache>=5.6,<6
-
-# 质量门禁
-pytest>=8.0,<9
-pytest-asyncio>=0.24,<1
-pytest-cov>=5.0,<7
-ruff>=0.9
-mypy>=1.14
