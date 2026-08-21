@@ -12,7 +12,7 @@ from uuid import uuid4
 import aiofiles
 from fastapi import FastAPI, File, Query, Request, UploadFile, status
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
@@ -128,6 +128,7 @@ def create_app(
     database = ResearchDatabase(app_settings.database_path)
     task_manager = ResearchTaskManager(
         database=database,
+        upload_dir=app_settings.upload_dir,
         report_dir=app_settings.report_dir,
         runner=runner,
         max_task_file_bytes=app_settings.max_task_upload_bytes,
@@ -323,6 +324,20 @@ def create_app(
         except TaskStateError as error:
             raise ApiError(409, "invalid_task_state", str(error)) from error
         return _task_response(database, record)
+
+    @app.delete(
+        "/api/tasks/{task_id}",
+        status_code=status.HTTP_204_NO_CONTENT,
+        responses={404: {"model": ErrorResponse}, 409: {"model": ErrorResponse}},
+    )
+    async def delete_task(task_id: str) -> Response:
+        try:
+            await task_manager.delete_task(task_id)
+        except TaskNotFoundError as error:
+            raise ApiError(404, "task_not_found", str(error)) from error
+        except TaskStateError as error:
+            raise ApiError(409, "invalid_task_state", str(error)) from error
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     @app.get(
         "/api/tasks/{task_id}/report",

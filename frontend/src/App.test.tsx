@@ -154,6 +154,52 @@ describe("研究输入与任务工作区", () => {
     );
   });
 
+  it("确认后可以删除已结束的历史记录", async () => {
+    const user = userEvent.setup();
+    const completedTask = taskResponse({
+      id: "deletable-task",
+      status: "succeeded",
+      stage: "completed",
+      message: "研究报告已经生成",
+      report_available: true,
+      finished_at: "2026-08-19T00:00:06Z",
+    });
+    let deleted = false;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = String(input);
+      if (path.startsWith("/api/tasks?")) {
+        return jsonResponse({ items: deleted ? [] : [completedTask] });
+      }
+      if (path === "/api/tasks/deletable-task/report") {
+        return new Response("# 待删除报告", { status: 200 });
+      }
+      if (path === "/api/tasks/deletable-task" && init?.method === "DELETE") {
+        deleted = true;
+        return new Response(null, { status: 204 });
+      }
+      throw new Error(`未处理的测试请求：${path}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App />);
+
+    await screen.findByRole(
+      "heading",
+      { name: "待删除报告" },
+      { timeout: 5_000 },
+    );
+    const deleteButton = await screen.findByRole("button", {
+      name: "删除研究记录：研究主题",
+    });
+    fireEvent.click(deleteButton);
+    const deleteActions = await screen.findAllByRole("button", { name: /删\s*除/ });
+    await user.click(deleteActions.at(-1)!);
+
+    await waitFor(() => expect(screen.getByText("还没有研究记录")).toBeInTheDocument());
+    expect(fetchMock.mock.calls.some(([input, init]) => (
+      String(input) === "/api/tasks/deletable-task" && init?.method === "DELETE"
+    ))).toBe(true);
+  });
+
   it("可以对运行中的任务发出协作式取消", async () => {
     const user = userEvent.setup();
     const runningTask = taskResponse({

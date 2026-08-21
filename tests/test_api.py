@@ -197,6 +197,68 @@ async def test_successful_task_can_be_polled_and_downloaded(
 
 
 @pytest.mark.asyncio
+async def test_completed_task_can_be_deleted_with_its_private_files(
+    tmp_path: Path,
+) -> None:
+    """删除终态任务时应清理报告和不再被引用的上传资料。"""
+    settings = _settings(tmp_path, name="delete")
+    app = create_app(settings, runner=successful_runner)
+    async with _app_client(app) as test_client:
+        uploaded = await test_client.post(
+            "/api/files",
+            files={"file": ("资料.md", b"# local evidence", "text/markdown")},
+        )
+        file_id = uploaded.json()["id"]
+        created = await test_client.post(
+            "/api/tasks",
+            json=_task_payload(file_ids=[file_id]),
+        )
+        task_id = created.json()["id"]
+        await _wait_for_status(test_client, task_id, {TaskStatus.SUCCEEDED.value})
+
+        upload_path = settings.upload_dir / f"{file_id}.md"
+        report_path = settings.report_dir / f"{task_id}.md"
+        assert upload_path.is_file()
+        assert report_path.is_file()
+
+        deleted = await test_client.delete(f"/api/tasks/{task_id}")
+        assert deleted.status_code == 204
+        assert (await test_client.get(f"/api/tasks/{task_id}")).status_code == 404
+        assert not upload_path.exists()
+        assert not report_path.exists()
+
+
+@pytest.mark.asyncio
+async def test_active_task_cannot_be_deleted(tmp_path: Path) -> None:
+    """运行中的任务必须先结束或取消，避免删除与后台写入竞争。"""
+    started = asyncio.Event()
+
+    async def blocking_runner(
+        request: ResearchRequest,
+        *,
+        on_progress: ProgressCallback | None,
+        cancel_event: asyncio.Event | None,
+    ) -> ResearchResult:
+        assert cancel_event is not None
+        started.set()
+        await cancel_event.wait()
+        raise ResearchCancelledError("研究任务已取消")
+
+    app = create_app(_settings(tmp_path, name="delete-active"), runner=blocking_runner)
+    async with _app_client(app) as test_client:
+        created = await test_client.post("/api/tasks", json=_task_payload())
+        task_id = created.json()["id"]
+        await asyncio.wait_for(started.wait(), timeout=2)
+
+        deleted = await test_client.delete(f"/api/tasks/{task_id}")
+        assert deleted.status_code == 409
+        assert deleted.json()["error"]["code"] == "invalid_task_state"
+
+        await test_client.post(f"/api/tasks/{task_id}/cancel")
+        await _wait_for_status(test_client, task_id, {TaskStatus.CANCELLED.value})
+
+
+@pytest.mark.asyncio
 async def test_upload_is_validated_and_passed_as_server_path(
     tmp_path: Path,
 ) -> None:

@@ -341,7 +341,9 @@ function App() {
               tasks={workspaceState.tasks}
               selectedTaskId={workspaceState.selectedTask?.id ?? null}
               loading={workspaceState.loadingHistory}
+              deletingTaskId={workspaceState.deletingTaskId}
               onSelect={workspaceState.selectTask}
+              onDelete={workspaceState.deleteTask}
               onRefresh={() => void workspaceState.refreshTasks()}
             />
           </div>

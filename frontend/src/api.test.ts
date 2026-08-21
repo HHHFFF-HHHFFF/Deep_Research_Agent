@@ -4,6 +4,7 @@ import "./test/setup";
 import {
   cancelResearchTask,
   createResearchTask,
+  deleteResearchTask,
   getResearchReport,
   getResearchTask,
   listResearchTasks,
@@ -111,7 +112,7 @@ describe("研究接口客户端", () => {
     });
   });
 
-  it("支持最近任务、详情、取消和报告接口", async () => {
+  it("支持最近任务、详情、取消、删除和报告接口", async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock
       .mockResolvedValueOnce(
@@ -132,18 +133,22 @@ describe("研究接口客户端", () => {
           headers: { "Content-Type": "application/json" },
         }),
       )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
       .mockResolvedValueOnce(new Response("# 研究报告", { status: 200 }));
 
     expect(await listResearchTasks(5)).toHaveLength(1);
     expect((await getResearchTask("task-001")).id).toBe("task-001");
     expect((await cancelResearchTask("task-001")).stage).toBe("cancelling");
+    await deleteResearchTask("task-001");
     expect(await getResearchReport("task-001")).toBe("# 研究报告");
     expect(researchReportUrl("task-001")).toBe("/api/tasks/task-001/report");
     expect(fetchMock.mock.calls.map(([input]) => input)).toEqual([
       "/api/tasks?limit=5",
       "/api/tasks/task-001",
       "/api/tasks/task-001/cancel",
+      "/api/tasks/task-001",
       "/api/tasks/task-001/report",
     ]);
+    expect(fetchMock.mock.calls[3]?.[1]?.method).toBe("DELETE");
   });
 });

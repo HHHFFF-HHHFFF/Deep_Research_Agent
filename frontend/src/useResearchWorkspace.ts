@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ApiClientError,
   cancelResearchTask,
+  deleteResearchTask,
   getResearchReport,
   getResearchTask,
   listResearchTasks,
@@ -38,6 +39,16 @@ function saveLastTaskId(taskId: string): void {
   }
 }
 
+function clearLastTaskId(taskId: string): void {
+  try {
+    if (window.localStorage.getItem(LAST_TASK_STORAGE_KEY) === taskId) {
+      window.localStorage.removeItem(LAST_TASK_STORAGE_KEY);
+    }
+  } catch {
+    // 浏览器禁用存储时不影响当前页面删除记录。
+  }
+}
+
 interface ResearchWorkspaceOptions {
   pollIntervalMs?: number;
   maxPollFailures?: number;
@@ -54,6 +65,7 @@ export function useResearchWorkspace(options: ResearchWorkspaceOptions = {}) {
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [loadingReport, setLoadingReport] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
   const [reportError, setReportError] = useState<string | null>(null);
   const [pollingStopped, setPollingStopped] = useState(false);
@@ -103,7 +115,14 @@ export function useResearchWorkspace(options: ResearchWorkspaceOptions = {}) {
         }
       }
       preferredTask ??= recentTasks.at(0) ?? null;
-      if (mountedRef.current && preferredTask) selectTask(preferredTask);
+      if (mountedRef.current) {
+        if (preferredTask) {
+          selectTask(preferredTask);
+        } else {
+          setSelectedTask(null);
+          setReport(null);
+        }
+      }
     } catch (error) {
       if (mountedRef.current) {
         setWorkspaceError(safeMessage(error, "最近任务加载失败"));
@@ -216,6 +235,30 @@ export function useResearchWorkspace(options: ResearchWorkspaceOptions = {}) {
     }
   }, [applyTask, refreshTasks, selectedTask]);
 
+  const deleteTask = useCallback(async (task: ResearchTask) => {
+    if (isTaskActive(task) || deletingTaskId) return;
+    setDeletingTaskId(task.id);
+    setWorkspaceError(null);
+    try {
+      await deleteResearchTask(task.id);
+      if (!mountedRef.current) return;
+      clearLastTaskId(task.id);
+      setTasks((current) => current.filter((item) => item.id !== task.id));
+      if (selectedTask?.id === task.id) {
+        setSelectedTask(null);
+        setReport(null);
+        setReportError(null);
+      }
+      await refreshTasks();
+    } catch (error) {
+      if (mountedRef.current) {
+        setWorkspaceError(safeMessage(error, "删除研究记录失败"));
+      }
+    } finally {
+      if (mountedRef.current) setDeletingTaskId(null);
+    }
+  }, [deletingTaskId, refreshTasks, selectedTask?.id]);
+
   const hasActiveTask = useMemo(
     () => isTaskActive(selectedTask) || tasks.some(isTaskActive),
     [selectedTask, tasks],
@@ -228,6 +271,7 @@ export function useResearchWorkspace(options: ResearchWorkspaceOptions = {}) {
     loadingHistory,
     loadingReport,
     cancelling,
+    deletingTaskId,
     workspaceError,
     reportError,
     pollingStopped,
@@ -236,6 +280,7 @@ export function useResearchWorkspace(options: ResearchWorkspaceOptions = {}) {
     selectTask,
     refreshTasks,
     cancelSelectedTask,
+    deleteTask,
     retrySelectedTask,
   };
 }

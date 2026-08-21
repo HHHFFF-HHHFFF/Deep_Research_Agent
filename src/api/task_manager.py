@@ -9,8 +9,14 @@ from typing import Protocol
 from uuid import uuid4
 
 from src.api.database import ResearchDatabase, StoredFileRecord, TaskRecord
-from src.api.models import TaskCreateRequest, TaskStage, TaskStatus
+from src.api.models import (
+    TERMINAL_TASK_STATUSES,
+    TaskCreateRequest,
+    TaskStage,
+    TaskStatus,
+)
 from src.application import ResearchProgress, ResearchRequest, ResearchResult
+from src.document_parser import parsed_cache_path
 from src.research_runner import (
     ResearchCancelledError,
     ResearchRunError,
@@ -56,11 +62,13 @@ class ResearchTaskManager:
     def __init__(
         self,
         database: ResearchDatabase,
+        upload_dir: Path,
         report_dir: Path,
         runner: ResearchRunner = run_research,
         max_task_file_bytes: int = 25 * 1024 * 1024,
     ):
         self.database = database
+        self.upload_dir = upload_dir.resolve()
         self.report_dir = report_dir.resolve()
         self.runner = runner
         self.max_task_file_bytes = max_task_file_bytes
@@ -135,6 +143,37 @@ class ResearchTaskManager:
             )
 
         return self.database.get_task(task_id) or record
+
+    async def delete_task(self, task_id: str) -> None:
+        """删除已结束任务，以及不再被其他任务引用的本地文件。"""
+        async with self._lock:
+            record = self.database.get_task(task_id)
+            if record is None:
+                raise TaskNotFoundError("研究任务不存在")
+            if record.status not in TERMINAL_TASK_STATUSES:
+                raise TaskStateError("运行中的研究任务不能删除，请先等待完成或取消")
+
+            orphan_files = self.database.get_task_orphan_files(task_id)
+
+            def remove_local_files() -> None:
+                report_path = self.report_dir / f"{task_id}.md"
+                temporary_path = self.report_dir / f"{task_id}.tmp"
+                report_path.unlink(missing_ok=True)
+                temporary_path.unlink(missing_ok=True)
+                for file in orphan_files:
+                    stored_path = Path(file.stored_path).resolve()
+                    if stored_path.parent != self.upload_dir:
+                        raise TaskStateError("上传资料的存储路径异常，任务未删除")
+                    stored_path.unlink(missing_ok=True)
+                    parsed_cache_path(stored_path).unlink(missing_ok=True)
+
+            await asyncio.to_thread(remove_local_files)
+            deleted = self.database.delete_task(
+                task_id,
+                [file.id for file in orphan_files],
+            )
+            if not deleted:
+                raise TaskNotFoundError("研究任务不存在")
 
     async def _execute(
         self,

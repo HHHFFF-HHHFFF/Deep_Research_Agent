@@ -1,5 +1,6 @@
-import { ClockCircleOutlined, ReloadOutlined } from "@ant-design/icons";
-import { Button, Empty, Skeleton, Tag, Typography } from "antd";
+import { useState } from "react";
+import { ClockCircleOutlined, DeleteOutlined, ReloadOutlined } from "@ant-design/icons";
+import { Button, Empty, Modal, Skeleton, Tag, Tooltip, Typography } from "antd";
 
 import type { ResearchTask, TaskStatus } from "../api";
 
@@ -36,11 +37,27 @@ interface RecentTasksProps {
   tasks: ResearchTask[];
   selectedTaskId: string | null;
   loading: boolean;
+  deletingTaskId: string | null;
   onSelect: (task: ResearchTask) => void;
+  onDelete: (task: ResearchTask) => Promise<void>;
   onRefresh: () => void;
 }
 
-export function RecentTasks({ tasks, selectedTaskId, loading, onSelect, onRefresh }: RecentTasksProps) {
+function isTaskActive(task: ResearchTask): boolean {
+  return task.status === "waiting" || task.status === "running";
+}
+
+export function RecentTasks({
+  tasks,
+  selectedTaskId,
+  loading,
+  deletingTaskId,
+  onSelect,
+  onDelete,
+  onRefresh,
+}: RecentTasksProps) {
+  const [pendingDelete, setPendingDelete] = useState<ResearchTask | null>(null);
+
   return (
     <aside className="history-panel" aria-labelledby="history-title">
       <div className="panel-heading compact-heading">
@@ -64,23 +81,67 @@ export function RecentTasks({ tasks, selectedTaskId, loading, onSelect, onRefres
       ) : (
         <div className="history-list">
           {tasks.map((task) => (
-            <button
-              type="button"
+            <div
               key={task.id}
               className={`history-item${task.id === selectedTaskId ? " history-item-selected" : ""}`}
-              onClick={() => onSelect(task)}
-              aria-pressed={task.id === selectedTaskId}
             >
-              <span className="history-item-top">
-                <Tag color={STATUS_COLORS[task.status]}>{STATUS_LABELS[task.status]}</Tag>
-                <span className="history-time"><ClockCircleOutlined /> {formatDate(task.created_at)}</span>
-              </span>
-              <strong>{task.task}</strong>
-              <small>{task.model_provider === "qwen" ? "Qwen" : "DeepSeek"}</small>
-            </button>
+              <button
+                type="button"
+                className="history-item-main"
+                onClick={() => onSelect(task)}
+                aria-pressed={task.id === selectedTaskId}
+              >
+                <span className="history-item-top">
+                  <Tag color={STATUS_COLORS[task.status]}>{STATUS_LABELS[task.status]}</Tag>
+                  <span className="history-time"><ClockCircleOutlined /> {formatDate(task.created_at)}</span>
+                </span>
+                <strong>{task.task}</strong>
+                <small>{task.model_provider === "qwen" ? "Qwen" : "DeepSeek"}</small>
+              </button>
+              {isTaskActive(task) ? (
+                <Tooltip title="运行中的任务不能删除">
+                  <Button
+                    className="history-delete-button"
+                    type="text"
+                    size="small"
+                    disabled
+                    icon={<DeleteOutlined />}
+                    aria-label={`暂时不能删除：${task.task}`}
+                  />
+                </Tooltip>
+              ) : (
+                <Button
+                  className="history-delete-button"
+                  type="text"
+                  danger
+                  size="small"
+                  loading={deletingTaskId === task.id}
+                  disabled={deletingTaskId !== null}
+                  icon={<DeleteOutlined />}
+                  aria-label={`删除研究记录：${task.task}`}
+                  onClick={() => setPendingDelete(task)}
+                />
+              )}
+            </div>
           ))}
         </div>
       )}
+      <Modal
+        title="删除这条研究记录？"
+        open={pendingDelete !== null}
+        okText="删除"
+        cancelText="取消"
+        okButtonProps={{ danger: true }}
+        confirmLoading={pendingDelete?.id === deletingTaskId}
+        onCancel={() => setPendingDelete(null)}
+        onOk={async () => {
+          if (!pendingDelete) return;
+          await onDelete(pendingDelete);
+          setPendingDelete(null);
+        }}
+      >
+        <p>对应报告和未被其他任务使用的资料也会删除，且无法恢复。</p>
+      </Modal>
     </aside>
   );
 }

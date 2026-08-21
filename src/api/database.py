@@ -225,6 +225,39 @@ class ResearchDatabase:
             ).all()
         return [_task_record(row) for row in rows]
 
+    def get_task_orphan_files(self, task_id: str) -> list[StoredFileRecord]:
+        """返回仅由指定任务引用、可随任务一同清理的上传文件。"""
+        with self._session_factory() as session:
+            task_row = session.get(ResearchTaskRow, task_id)
+            if task_row is None:
+                return []
+            candidate_ids = set(task_row.file_ids or [])
+            if not candidate_ids:
+                return []
+            other_file_ids: set[str] = set()
+            for file_ids in session.scalars(
+                select(ResearchTaskRow.file_ids).where(ResearchTaskRow.id != task_id)
+            ):
+                other_file_ids.update(file_ids or [])
+            orphan_ids = candidate_ids - other_file_ids
+            rows = session.scalars(
+                select(UploadedFileRow).where(UploadedFileRow.id.in_(orphan_ids))
+            ).all()
+        return [_file_record(row) for row in rows]
+
+    def delete_task(self, task_id: str, orphan_file_ids: list[str]) -> bool:
+        """删除任务元数据及确认不再被引用的上传文件元数据。"""
+        with self._session_factory.begin() as session:
+            task_row = session.get(ResearchTaskRow, task_id)
+            if task_row is None:
+                return False
+            session.delete(task_row)
+            for file_id in orphan_file_ids:
+                file_row = session.get(UploadedFileRow, file_id)
+                if file_row is not None:
+                    session.delete(file_row)
+        return True
+
     def mark_running(self, task_id: str) -> None:
         """把等待任务标记为正在运行。"""
         self._update_task(

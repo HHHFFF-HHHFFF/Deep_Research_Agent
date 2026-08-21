@@ -154,6 +154,12 @@ export function cancelResearchTask(taskId: string): Promise<ResearchTask> {
   });
 }
 
+export async function deleteResearchTask(taskId: string): Promise<void> {
+  await request(`/api/tasks/${encodeURIComponent(taskId)}`, {
+    method: "DELETE",
+  });
+}
+
 export async function getResearchReport(taskId: string, signal?: AbortSignal): Promise<string> {
   const response = await request(`/api/tasks/${encodeURIComponent(taskId)}/report`, {
     method: "GET",
