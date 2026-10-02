@@ -204,6 +204,11 @@ class DeepResearcherTool(Tool):
                     "round_number": round_num,
                     "query": query,
                     "summary": merged_summary,
+                    "sources": [
+                        source
+                        for result in search_results
+                        for source in result.get("sources", [])
+                    ],
                 }
                 research_history.append(round_info)
 
@@ -429,9 +434,15 @@ class DeepResearcherTool(Tool):
                         filter_year=filter_year,
                     )
                     if response.success:
+                        response_data = (
+                            response.extra.data
+                            if response.extra and response.extra.data
+                            else {}
+                        )
                         return {
                             "source": "web_searcher",
                             "summary": response.message.strip(),
+                            "sources": response_data.get("sources", []),
                             "success": True,
                         }
                     else:

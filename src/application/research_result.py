@@ -6,6 +6,8 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
+from .evidence import CitationValidation, ResearchEvidence
+
 
 class ResearchStage(str, Enum):
     """前端需要关注的少量真实研究阶段。"""
@@ -45,6 +47,7 @@ class ResearchActivity(BaseModel):
     step_number: int | None = Field(default=None, ge=1)
     tool_name: str | None = Field(default=None, max_length=120)
     duration_ms: int | None = Field(default=None, ge=0)
+    evidence: list[ResearchEvidence] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
@@ -68,3 +71,5 @@ class ResearchResult(BaseModel):
         default=None,
         description="研究工具实际生成的 Markdown 报告路径。",
     )
+    evidence: list[ResearchEvidence] = Field(default_factory=list)
+    citation_validation: CitationValidation | None = None

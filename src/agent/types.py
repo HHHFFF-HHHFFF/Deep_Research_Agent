@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field
@@ -21,6 +21,9 @@ from src.utils import (
     dedent,
     get_file_info,
 )
+
+if TYPE_CHECKING:
+    from src.document_retriever import RetrievedChunk
 
 
 class InputArgs(BaseModel):
@@ -291,6 +294,20 @@ class Agent(BaseModel):
         ctx: SessionContext | None = None,
     ) -> str:
         """检索本地文件，并把相关片段加入研究任务。"""
+        enhanced_task, _ = await self._generate_enhanced_task_with_chunks(
+            task,
+            files,
+            ctx=ctx,
+        )
+        return enhanced_task
+
+    async def _generate_enhanced_task_with_chunks(
+        self,
+        task: str,
+        files: list[dict[str, Any]],
+        ctx: SessionContext | None = None,
+    ) -> tuple[str, list[RetrievedChunk]]:
+        """生成增强任务，并同时返回用于证据链的真实检索片段。"""
         from src.document_retriever import (
             LocalDocumentRetriever,
             format_local_context,
@@ -324,9 +341,12 @@ class Agent(BaseModel):
             {file_names}
             - 检索到的本地证据：
             {local_context}
+            - 引用要求：
+            报告使用本地证据时，必须保留对应的
+            [本地资料：文件名#片段编号] 标记。
         """
         )
-        return enhanced_task
+        return enhanced_task, chunks
 
     async def _get_agent_context(
         self,

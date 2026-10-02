@@ -194,6 +194,8 @@ class ResearchTaskManager:
             self.database.update_progress(task_id, stage, progress.message)
             if progress.activity is not None:
                 self.database.upsert_activity(task_id, progress.activity)
+                for evidence in progress.activity.evidence:
+                    self.database.upsert_evidence(task_id, evidence)
 
         try:
             self.database.mark_running(task_id)
@@ -207,6 +209,13 @@ class ResearchTaskManager:
                 on_progress=on_progress,
                 cancel_event=cancel_event,
             )
+            for evidence in result.evidence:
+                self.database.upsert_evidence(task_id, evidence)
+            if result.citation_validation is not None:
+                self.database.save_citation_validation(
+                    task_id,
+                    result.citation_validation,
+                )
             report_path = await self._save_report(task_id, result.report)
             self.database.mark_succeeded(
                 task_id,

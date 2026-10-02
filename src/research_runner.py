@@ -13,10 +13,12 @@ from pathlib import Path
 from typing import Any, Protocol, TypeVar, cast
 
 from src.application import (
+    ResearchEvidence,
     ResearchProgress,
     ResearchRequest,
     ResearchResult,
     ResearchStage,
+    validate_and_link_citations,
 )
 from src.logger import logger
 from src.session.types import SessionContext
@@ -246,6 +248,18 @@ async def run_research(
     cancel_event: asyncio.Event | None = None,
 ) -> ResearchResult:
     """执行一次研究，并返回可供命令行或 API 使用的结构化结果。"""
+    evidence_by_id: dict[str, ResearchEvidence] = {}
+
+    async def capture_progress(progress: ResearchProgress) -> None:
+        if progress.activity is not None:
+            for evidence in progress.activity.evidence:
+                evidence_by_id[evidence.id] = evidence
+        if on_progress is None:
+            return
+        callback_result = on_progress(progress)
+        if inspect.isawaitable(callback_result):
+            await cast(Awaitable[None], callback_result)
+
     try:
         await _emit_progress(
             on_progress,
@@ -267,7 +281,7 @@ async def run_research(
 
         ctx = SessionContext()
         response = await _await_with_cancellation(
-            lambda: _invoke_agent(request, ctx, on_progress),
+            lambda: _invoke_agent(request, ctx, capture_progress),
             cancel_event,
         )
         if not response.success:
@@ -281,6 +295,14 @@ async def run_research(
         )
         if not report:
             raise ResearchRunError("研究已结束，但没有生成报告内容")
+        (
+            report,
+            validated_evidence,
+            citation_validation,
+        ) = validate_and_link_citations(
+            report,
+            list(evidence_by_id.values()),
+        )
 
         result = ResearchResult(
             task=request.task,
@@ -289,6 +311,8 @@ async def run_research(
             session_id=ctx.id,
             files=request.files,
             report_path=report_path,
+            evidence=validated_evidence,
+            citation_validation=citation_validation,
         )
         await _emit_progress(
             on_progress,

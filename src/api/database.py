@@ -9,7 +9,9 @@ from pathlib import Path
 from sqlalchemy import (
     JSON,
     URL,
+    Boolean,
     DateTime,
+    Float,
     Integer,
     String,
     Text,
@@ -23,9 +25,13 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 from src.api.models import TERMINAL_TASK_STATUSES, TaskStage, TaskStatus
 from src.application import (
+    CitationIssue,
+    CitationValidation,
+    EvidenceSourceType,
     ResearchActivity,
     ResearchActivityStatus,
     ResearchActivityType,
+    ResearchEvidence,
 )
 
 
@@ -99,6 +105,40 @@ class TaskActivityRow(Base):
     tool_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
     duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class TaskEvidenceRow(Base):
+    """任务采集到的网页或本地文档证据。"""
+
+    __tablename__ = "task_evidence"
+
+    row_id: Mapped[str] = mapped_column(String(80), primary_key=True)
+    task_id: Mapped[str] = mapped_column(String(36), index=True)
+    evidence_id: Mapped[str] = mapped_column(String(64))
+    source_type: Mapped[str] = mapped_column(String(16))
+    title: Mapped[str] = mapped_column(String(300))
+    url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    file_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    chunk_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    excerpt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    relevance_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    citation_labels: Mapped[list[str]] = mapped_column(JSON, default=list)
+
+
+class CitationValidationRow(Base):
+    """任务最终报告的引用核验摘要。"""
+
+    __tablename__ = "citation_validations"
+
+    task_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    passed: Mapped[bool] = mapped_column(Boolean)
+    total_citations: Mapped[int] = mapped_column(Integer)
+    valid_citations: Mapped[int] = mapped_column(Integer)
+    invalid_citations: Mapped[int] = mapped_column(Integer)
+    cited_evidence: Mapped[int] = mapped_column(Integer)
+    total_evidence: Mapped[int] = mapped_column(Integer)
+    coverage_rate: Mapped[float] = mapped_column(Float)
+    issues: Mapped[list[dict[str, object]]] = mapped_column(JSON, default=list)
 
 
 @dataclass(frozen=True)
@@ -344,6 +384,103 @@ class ResearchDatabase:
                 .values(status=status.value, detail=detail)
             )
 
+    def upsert_evidence(self, task_id: str, evidence: ResearchEvidence) -> None:
+        """新增证据或更新最终引用标签。"""
+        row_id = f"{task_id}:{evidence.id}"
+        with self._session_factory.begin() as session:
+            if session.get(ResearchTaskRow, task_id) is None:
+                return
+            row = session.get(TaskEvidenceRow, row_id)
+            if row is None:
+                row = TaskEvidenceRow(
+                    row_id=row_id,
+                    task_id=task_id,
+                    evidence_id=evidence.id,
+                    source_type=evidence.source_type.value,
+                    title=evidence.title,
+                    url=evidence.url,
+                    file_name=evidence.file_name,
+                    chunk_index=evidence.chunk_index,
+                    excerpt=evidence.excerpt,
+                    relevance_score=evidence.relevance_score,
+                    citation_labels=evidence.citation_labels,
+                )
+                session.add(row)
+                return
+            row.title = evidence.title
+            row.url = evidence.url
+            row.file_name = evidence.file_name
+            row.chunk_index = evidence.chunk_index
+            row.excerpt = evidence.excerpt
+            row.relevance_score = evidence.relevance_score
+            row.citation_labels = evidence.citation_labels
+
+    def list_task_evidence(self, task_id: str) -> list[ResearchEvidence]:
+        """返回任务采集到的真实证据。"""
+        with self._session_factory() as session:
+            rows = session.scalars(
+                select(TaskEvidenceRow)
+                .where(TaskEvidenceRow.task_id == task_id)
+                .order_by(
+                    TaskEvidenceRow.source_type.asc(),
+                    TaskEvidenceRow.title.asc(),
+                )
+            ).all()
+        return [
+            ResearchEvidence(
+                id=row.evidence_id,
+                source_type=EvidenceSourceType(row.source_type),
+                title=row.title,
+                url=row.url,
+                file_name=row.file_name,
+                chunk_index=row.chunk_index,
+                excerpt=row.excerpt,
+                relevance_score=row.relevance_score,
+                citation_labels=list(row.citation_labels or []),
+            )
+            for row in rows
+        ]
+
+    def save_citation_validation(
+        self,
+        task_id: str,
+        validation: CitationValidation,
+    ) -> None:
+        """保存或覆盖最终报告的引用核验摘要。"""
+        with self._session_factory.begin() as session:
+            if session.get(ResearchTaskRow, task_id) is None:
+                return
+            row = session.get(CitationValidationRow, task_id)
+            values = validation.model_dump(mode="json")
+            if row is None:
+                session.add(CitationValidationRow(task_id=task_id, **values))
+                return
+            for field_name, value in values.items():
+                setattr(row, field_name, value)
+
+    def get_citation_validation(
+        self,
+        task_id: str,
+    ) -> CitationValidation | None:
+        """读取指定任务的引用核验结果。"""
+        with self._session_factory() as session:
+            row = session.get(CitationValidationRow, task_id)
+            if row is None:
+                return None
+            return CitationValidation(
+                passed=row.passed,
+                total_citations=row.total_citations,
+                valid_citations=row.valid_citations,
+                invalid_citations=row.invalid_citations,
+                cited_evidence=row.cited_evidence,
+                total_evidence=row.total_evidence,
+                coverage_rate=row.coverage_rate,
+                issues=[
+                    CitationIssue.model_validate(issue)
+                    for issue in list(row.issues or [])
+                ],
+            )
+
     def get_task_orphan_files(self, task_id: str) -> list[StoredFileRecord]:
         """返回仅由指定任务引用、可随任务一同清理的上传文件。"""
         with self._session_factory() as session:
@@ -372,6 +509,14 @@ class ResearchDatabase:
                 return False
             session.execute(
                 delete(TaskActivityRow).where(TaskActivityRow.task_id == task_id)
+            )
+            session.execute(
+                delete(TaskEvidenceRow).where(TaskEvidenceRow.task_id == task_id)
+            )
+            session.execute(
+                delete(CitationValidationRow).where(
+                    CitationValidationRow.task_id == task_id
+                )
             )
             session.delete(task_row)
             for file_id in orphan_file_ids:

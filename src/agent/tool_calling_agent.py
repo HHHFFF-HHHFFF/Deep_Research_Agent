@@ -13,11 +13,15 @@ from pydantic import ConfigDict, Field
 
 from src.agent.types import Agent, AgentExtra, AgentResponse, ThinkOutput
 from src.application import (
+    EvidenceSourceType,
     ResearchActivity,
     ResearchActivityStatus,
     ResearchActivityType,
+    ResearchEvidence,
     ResearchProgress,
     ResearchStage,
+    local_evidence_id,
+    web_evidence_from_sources,
 )
 from src.config import config
 from src.environment.server import ecp
@@ -130,6 +134,36 @@ class ToolCallingAgent(Agent):
     def _tool_title(tool_name: str) -> str:
         """把内部工具名称转换为用户可理解的安全标题。"""
         return TOOL_TITLES.get(tool_name, f"执行研究工具：{tool_name}")
+
+    @staticmethod
+    def _extract_tool_evidence(
+        tool_name: str,
+        action_extra: Any,
+    ) -> list[ResearchEvidence]:
+        """从工具结构化附加数据中提取真实网页来源。"""
+        data = getattr(action_extra, "data", None)
+        if not isinstance(data, dict):
+            return []
+
+        raw_sources: list[dict[str, object]] = []
+        if tool_name == "web_searcher":
+            sources = data.get("sources", [])
+            if isinstance(sources, list):
+                raw_sources.extend(
+                    source for source in sources if isinstance(source, dict)
+                )
+        elif tool_name == "deep_researcher":
+            history = data.get("history", [])
+            if isinstance(history, list):
+                for round_info in history:
+                    if not isinstance(round_info, dict):
+                        continue
+                    sources = round_info.get("sources", [])
+                    if isinstance(sources, list):
+                        raw_sources.extend(
+                            source for source in sources if isinstance(source, dict)
+                        )
+        return web_evidence_from_sources(raw_sources)
 
     async def _get_tracer_and_record(self) -> tuple[Tracer, Record]:
         """实现 `_get_tracer_and_record` 的业务逻辑。"""
@@ -365,6 +399,10 @@ class ToolCallingAgent(Agent):
                             "duration_ms": round(
                                 (time.perf_counter() - activity_started) * 1000
                             ),
+                            "evidence": self._extract_tool_evidence(
+                                action_name,
+                                action_extra,
+                            ),
                         }
                     ),
                 )
@@ -463,7 +501,14 @@ class ToolCallingAgent(Agent):
                 files = await asyncio.gather(
                     *[self._extract_file_content(file) for file in files]
                 )
-                enhanced_task = await self._generate_enhanced_task(task, files, ctx=ctx)
+                (
+                    enhanced_task,
+                    retrieved_chunks,
+                ) = await self._generate_enhanced_task_with_chunks(
+                    task,
+                    files,
+                    ctx=ctx,
+                )
             except Exception:
                 await self._emit_activity(
                     on_progress,
@@ -487,6 +532,24 @@ class ToolCallingAgent(Agent):
                         "duration_ms": round(
                             (time.perf_counter() - retrieval_started) * 1000
                         ),
+                        "evidence": [
+                            ResearchEvidence(
+                                id=local_evidence_id(
+                                    chunk.source,
+                                    chunk.chunk_index + 1,
+                                    chunk.content_hash,
+                                ),
+                                source_type=EvidenceSourceType.LOCAL,
+                                title=(
+                                    f"{chunk.source} · 片段 {chunk.chunk_index + 1}"
+                                ),
+                                file_name=chunk.source,
+                                chunk_index=chunk.chunk_index + 1,
+                                excerpt=chunk.text[:800],
+                                relevance_score=chunk.score,
+                            )
+                            for chunk in retrieved_chunks
+                        ],
                     }
                 ),
             )

@@ -26,6 +26,8 @@ function taskResponse(overrides: Partial<ResearchTask> = {}): ResearchTask {
     error_message: null,
     files: [],
     activities: [],
+    evidence: [],
+    citation_validation: null,
     rag_enabled: false,
     report_available: false,
     created_at: "2026-08-19T00:00:00Z",
@@ -134,6 +136,40 @@ describe("研究输入与任务工作区", () => {
         duration_ms: 125,
         created_at: "2026-08-19T00:00:02Z",
       }],
+      evidence: [
+        {
+          id: "web-evidence",
+          source_type: "web",
+          title: "网页研究来源",
+          url: "https://example.com/research",
+          file_name: null,
+          chunk_index: null,
+          excerpt: "网页来源摘要",
+          relevance_score: null,
+          citation_labels: ["1"],
+        },
+        {
+          id: "local-evidence",
+          source_type: "local",
+          title: "本地证据.pdf · 片段 2",
+          url: null,
+          file_name: "本地证据.pdf",
+          chunk_index: 2,
+          excerpt: "本地资料命中片段",
+          relevance_score: 0.91,
+          citation_labels: ["本地资料：本地证据.pdf#片段2"],
+        },
+      ],
+      citation_validation: {
+        passed: true,
+        total_citations: 2,
+        valid_citations: 2,
+        invalid_citations: 0,
+        cited_evidence: 2,
+        total_evidence: 2,
+        coverage_rate: 1,
+        issues: [],
+      },
       rag_enabled: true,
       report_available: true,
       started_at: "2026-08-19T00:00:01Z",
@@ -158,11 +194,18 @@ describe("研究输入与任务工作区", () => {
     expect(screen.getByText("报告正文")).toBeInTheDocument();
     expect(screen.getByText("本地 RAG")).toBeInTheDocument();
     expect(screen.getByText("已启用")).toBeInTheDocument();
-    expect(screen.getByText("本地证据.pdf")).toBeInTheDocument();
+    expect(screen.getAllByText("本地证据.pdf")).toHaveLength(2);
     expect(screen.getByText("Agent 执行过程")).toBeInTheDocument();
     expect(screen.getByText("检索网页资料")).toBeInTheDocument();
     expect(screen.getByText("web_searcher")).toBeInTheDocument();
     expect(screen.getByText("耗时 125 毫秒")).toBeInTheDocument();
+    expect(screen.getByText("研究证据与引用核验")).toBeInTheDocument();
+    expect(screen.getByText("引用检查通过")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "网页研究来源" })).toHaveAttribute(
+      "href",
+      "https://example.com/research",
+    );
+    expect(screen.getByText("本地资料命中片段")).toBeInTheDocument();
     expect(screen.queryByText("恶意脚本")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /下载 Markdown/ })).toHaveAttribute(
       "href",

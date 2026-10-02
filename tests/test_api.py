@@ -18,9 +18,12 @@ from src.api.app import ApiSettings, create_app
 from src.api.database import ResearchDatabase
 from src.api.models import TaskStatus
 from src.application import (
+    CitationValidation,
+    EvidenceSourceType,
     ResearchActivity,
     ResearchActivityStatus,
     ResearchActivityType,
+    ResearchEvidence,
     ResearchProgress,
     ResearchRequest,
     ResearchResult,
@@ -53,6 +56,13 @@ async def successful_runner(
     cancel_event: asyncio.Event | None,
 ) -> ResearchResult:
     """不访问网络的成功研究替身。"""
+    evidence = ResearchEvidence(
+        id="evidence-web",
+        source_type=EvidenceSourceType.WEB,
+        title="离线网页来源",
+        url="https://example.com/research",
+        excerpt="离线测试证据",
+    )
     await _emit(on_progress, ResearchStage.RESEARCHING, "正在执行离线研究")
     if on_progress is not None:
         activity_result = on_progress(
@@ -68,6 +78,7 @@ async def successful_runner(
                     step_number=1,
                     tool_name="web_searcher",
                     duration_ms=125,
+                    evidence=[evidence],
                 ),
             )
         )
@@ -79,6 +90,16 @@ async def successful_runner(
         model_name=f"{request.model_provider}/{request.model_id}",
         session_id="session-offline",
         files=request.files,
+        evidence=[evidence.model_copy(update={"citation_labels": ["1"]})],
+        citation_validation=CitationValidation(
+            passed=True,
+            total_citations=1,
+            valid_citations=1,
+            invalid_citations=0,
+            cited_evidence=1,
+            total_evidence=1,
+            coverage_rate=1.0,
+        ),
     )
 
 
@@ -212,6 +233,21 @@ async def test_successful_task_can_be_polled_and_downloaded(
     assert completed["activities"][-1]["status"] == "succeeded"
     assert completed["activities"][-1]["tool_name"] == "web_searcher"
     assert completed["activities"][-1]["duration_ms"] == 125
+    assert completed["evidence"] == [
+        {
+            "id": "evidence-web",
+            "source_type": "web",
+            "title": "离线网页来源",
+            "url": "https://example.com/research",
+            "file_name": None,
+            "chunk_index": None,
+            "excerpt": "离线测试证据",
+            "relevance_score": None,
+            "citation_labels": ["1"],
+        }
+    ]
+    assert completed["citation_validation"]["passed"] is True
+    assert completed["citation_validation"]["coverage_rate"] == 1.0
 
     report = await client.get(f"/api/tasks/{task_id}/report")
     assert report.status_code == 200

@@ -29,6 +29,37 @@ export interface TaskActivity {
   created_at: string;
 }
 
+export type EvidenceSourceType = "web" | "local";
+
+export interface ResearchEvidence {
+  id: string;
+  source_type: EvidenceSourceType;
+  title: string;
+  url: string | null;
+  file_name: string | null;
+  chunk_index: number | null;
+  excerpt: string | null;
+  relevance_score: number | null;
+  citation_labels: string[];
+}
+
+export interface CitationIssue {
+  label: string;
+  target: string | null;
+  reason: string;
+}
+
+export interface CitationValidation {
+  passed: boolean;
+  total_citations: number;
+  valid_citations: number;
+  invalid_citations: number;
+  cited_evidence: number;
+  total_evidence: number;
+  coverage_rate: number;
+  issues: CitationIssue[];
+}
+
 export interface ResearchTask {
   id: string;
   task: string;
@@ -41,6 +72,8 @@ export interface ResearchTask {
   error_message: string | null;
   files: UploadedFile[];
   activities: TaskActivity[];
+  evidence: ResearchEvidence[];
+  citation_validation: CitationValidation | null;
   rag_enabled: boolean;
   report_available: boolean;
   created_at: string;

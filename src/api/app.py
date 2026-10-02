@@ -100,6 +100,8 @@ def _task_response(
 ) -> TaskResponse:
     files = database.get_files(record.file_ids)
     activities = database.list_task_activities(record.id)
+    evidence = database.list_task_evidence(record.id)
+    citation_validation = database.get_citation_validation(record.id)
     return TaskResponse(
         id=record.id,
         task=record.task,
@@ -125,6 +127,8 @@ def _task_response(
             )
             for activity in activities
         ],
+        evidence=evidence,
+        citation_validation=citation_validation,
         rag_enabled=bool(files),
         report_available=(
             record.status is TaskStatus.SUCCEEDED and record.report_path is not None

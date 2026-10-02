@@ -23,6 +23,8 @@ const taskResponse = {
   error_message: null,
   files: [],
   activities: [],
+  evidence: [],
+  citation_validation: null,
   rag_enabled: false,
   report_available: false,
   created_at: "2026-08-19T00:00:00Z",

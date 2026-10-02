@@ -8,7 +8,16 @@ from typing import Any
 import pytest
 
 from src import research_runner
-from src.application import ResearchProgress, ResearchRequest, ResearchStage
+from src.application import (
+    EvidenceSourceType,
+    ResearchActivity,
+    ResearchActivityStatus,
+    ResearchActivityType,
+    ResearchEvidence,
+    ResearchProgress,
+    ResearchRequest,
+    ResearchStage,
+)
 from src.research_runner import (
     ResearchCancelledError,
     ResearchRunError,
@@ -126,6 +135,53 @@ async def test_run_research_prefers_generated_markdown_report(
     assert result.report.startswith("# 文件中的最终报告")
     assert result.report_path == str(tmp_path / f"{result.session_id}.md")
     assert result.model_name == "deepseek/deepseek-chat"
+
+
+@pytest.mark.asyncio
+async def test_run_research_collects_and_validates_agent_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+    stub_runtime: dict[str, Any],
+) -> None:
+    """Agent 活动中的真实来源应进入结果并与报告引用匹配。"""
+
+    async def fake_invoke(
+        request: ResearchRequest,
+        ctx: SessionContext,
+        on_progress: Any = None,
+    ) -> SimpleNamespace:
+        evidence = ResearchEvidence(
+            id="source-001",
+            source_type=EvidenceSourceType.WEB,
+            title="测试来源",
+            url="https://example.com/source",
+        )
+        assert on_progress is not None
+        await on_progress(
+            ResearchProgress(
+                stage=ResearchStage.RESEARCHING,
+                message="检索网页资料",
+                activity=ResearchActivity(
+                    type=ResearchActivityType.TOOL,
+                    status=ResearchActivityStatus.SUCCEEDED,
+                    title="检索网页资料",
+                    evidence=[evidence],
+                ),
+            )
+        )
+        return SimpleNamespace(
+            success=True,
+            message="研究结论[1](https://example.com/source)。",
+        )
+
+    monkeypatch.setattr(research_runner, "_invoke_agent", fake_invoke)
+
+    result = await run_research(ResearchRequest(task="验证证据汇总"))
+
+    assert result.evidence[0].citation_labels == ["1"]
+    assert result.citation_validation is not None
+    assert result.citation_validation.passed is True
+    assert result.citation_validation.coverage_rate == 1.0
+    assert stub_runtime["request"].task == "验证证据汇总"
 
 
 @pytest.mark.asyncio

@@ -187,6 +187,17 @@ class WebSearcherTool(Tool):
 
             # 组装并返回结果。
             search_engines_used = list({r.get("source", "") for r in results})
+            sources = [
+                {
+                    "title": str(result.get("title", "")).strip(),
+                    "url": str(result.get("url", "")).strip(),
+                    "description": str(result.get("description", "")).strip()[:800],
+                    "summary": str(result.get("summary", "")).strip()[:800],
+                    "source": str(result.get("source", "")).strip(),
+                }
+                for result in results
+                if str(result.get("url", "")).strip()
+            ]
 
             # 组装并返回结果。
             if merged_summary:
@@ -216,6 +227,7 @@ class WebSearcherTool(Tool):
                         "num_results": len(results),
                         "search_engines_used": search_engines_used,
                         "merged_summary": merged_summary,
+                        "sources": sources,
                     }
                 ),
             )

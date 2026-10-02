@@ -3,6 +3,8 @@ import {
   CloseCircleOutlined,
   DownloadOutlined,
   FileTextOutlined,
+  FileSearchOutlined,
+  LinkOutlined,
   LoadingOutlined,
   ReloadOutlined,
   ToolOutlined,
@@ -86,6 +88,11 @@ function formatActivityDuration(milliseconds: number | null): string | null {
   if (milliseconds === null) return null;
   if (milliseconds < 1000) return `${milliseconds} 毫秒`;
   return formatDuration(milliseconds);
+}
+
+function formatEvidenceScore(score: number | null): string | null {
+  if (score === null) return null;
+  return score.toFixed(3);
 }
 
 interface TaskWorkspaceProps {
@@ -212,6 +219,124 @@ export function TaskWorkspace({
               ) : (
                 <Text className="activity-empty" type="secondary">
                   任务开始后将在这里显示规划、资料检索和工具执行状态
+                </Text>
+              )}
+            </div>
+
+            <div className="evidence-section">
+              <div className="evidence-heading">
+                <div>
+                  <strong>研究证据与引用核验</strong>
+                  <small>网页来源可直接打开，本地引用可跳转到对应检索片段</small>
+                </div>
+                {task.citation_validation ? (
+                  <Tag color={task.citation_validation.passed ? "green" : "orange"}>
+                    {task.citation_validation.passed ? "引用检查通过" : "引用需要复核"}
+                  </Tag>
+                ) : (
+                  <Tag>等待报告核验</Tag>
+                )}
+              </div>
+
+              {task.citation_validation && (
+                <div className="citation-summary">
+                  <span>
+                    有效引用
+                    <strong>
+                      {task.citation_validation.valid_citations}/
+                      {task.citation_validation.total_citations}
+                    </strong>
+                  </span>
+                  <span>
+                    证据覆盖
+                    <strong>
+                      {Math.round(task.citation_validation.coverage_rate * 100)}%
+                    </strong>
+                  </span>
+                  <span>
+                    已引用证据
+                    <strong>
+                      {task.citation_validation.cited_evidence}/
+                      {task.citation_validation.total_evidence}
+                    </strong>
+                  </span>
+                </div>
+              )}
+
+              {task.citation_validation && task.citation_validation.issues.length > 0 && (
+                <Alert
+                  className="citation-alert"
+                  type="warning"
+                  showIcon
+                  title="引用核验提示"
+                  description={(
+                    <ul>
+                      {task.citation_validation.issues.map((issue, index) => (
+                        <li key={`${issue.label}-${index}`}>
+                          {issue.label}：{issue.reason}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                />
+              )}
+
+              {task.evidence.length > 0 ? (
+                <div className="evidence-list">
+                  {task.evidence.map((evidence) => {
+                    const score = formatEvidenceScore(evidence.relevance_score);
+                    const cited = evidence.citation_labels.length > 0;
+                    return (
+                      <article
+                        id={`evidence-${evidence.id}`}
+                        key={evidence.id}
+                        className="evidence-card"
+                      >
+                        <div className="evidence-card-heading">
+                          <span className="evidence-source-type">
+                            {evidence.source_type === "web" ? (
+                              <LinkOutlined />
+                            ) : (
+                              <FileSearchOutlined />
+                            )}
+                            {evidence.source_type === "web" ? "网页来源" : "本地片段"}
+                          </span>
+                          <Tag color={cited ? "green" : "default"}>
+                            {cited ? "报告已引用" : "暂未引用"}
+                          </Tag>
+                        </div>
+                        {evidence.url ? (
+                          <a
+                            className="evidence-title"
+                            href={evidence.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            {evidence.title}
+                          </a>
+                        ) : (
+                          <strong className="evidence-title">{evidence.title}</strong>
+                        )}
+                        {evidence.excerpt && (
+                          <p className="evidence-excerpt">{evidence.excerpt}</p>
+                        )}
+                        <div className="evidence-meta">
+                          {evidence.file_name && <span>{evidence.file_name}</span>}
+                          {evidence.chunk_index !== null && (
+                            <span>片段 {evidence.chunk_index}</span>
+                          )}
+                          {score && <span>相关度 {score}</span>}
+                          {evidence.citation_labels.map((label) => (
+                            <span key={label}>引用 {label}</span>
+                          ))}
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              ) : (
+                <Text className="evidence-empty" type="secondary">
+                  研究过程中采集到的网页来源和本地检索片段会显示在这里
                 </Text>
               )}
             </div>

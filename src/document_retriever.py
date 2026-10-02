@@ -229,6 +229,7 @@ def format_local_context(chunks: Sequence[RetrievedChunk]) -> str:
         content = html.escape(chunk.text)
         parts.extend(
             [
+                f"[本地资料：{source}#片段{chunk.chunk_index + 1}]",
                 (
                     f'<document source="{source}" chunk="{chunk.chunk_index + 1}" '
                     f'score="{chunk.score:.4f}">'

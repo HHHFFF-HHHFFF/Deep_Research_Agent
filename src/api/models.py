@@ -7,7 +7,12 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
-from src.application import ResearchActivityStatus, ResearchActivityType
+from src.application import (
+    CitationValidation,
+    ResearchActivityStatus,
+    ResearchActivityType,
+    ResearchEvidence,
+)
 
 
 class TaskStatus(str, Enum):
@@ -105,6 +110,8 @@ class TaskResponse(BaseModel):
     error_message: str | None = None
     files: list[UploadedFileResponse] = Field(default_factory=list)
     activities: list[TaskActivityResponse] = Field(default_factory=list)
+    evidence: list[ResearchEvidence] = Field(default_factory=list)
+    citation_validation: CitationValidation | None = None
     rag_enabled: bool = False
     report_available: bool = False
     created_at: datetime
