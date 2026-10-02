@@ -15,7 +15,12 @@ from src.api.models import (
     TaskStage,
     TaskStatus,
 )
-from src.application import ResearchProgress, ResearchRequest, ResearchResult
+from src.application import (
+    ResearchActivityStatus,
+    ResearchProgress,
+    ResearchRequest,
+    ResearchResult,
+)
 from src.document_parser import parsed_cache_path
 from src.research_runner import (
     ResearchCancelledError,
@@ -187,6 +192,8 @@ class ResearchTaskManager:
         async def on_progress(progress: ResearchProgress) -> None:
             stage = TaskStage(progress.stage.value)
             self.database.update_progress(task_id, stage, progress.message)
+            if progress.activity is not None:
+                self.database.upsert_activity(task_id, progress.activity)
 
         try:
             self.database.mark_running(task_id)
@@ -207,16 +214,36 @@ class ResearchTaskManager:
                 report_path=str(report_path),
             )
         except ResearchCancelledError:
+            self.database.finalize_running_activities(
+                task_id,
+                ResearchActivityStatus.CANCELLED,
+                "研究任务已取消，本活动未继续执行",
+            )
             if self._shutting_down:
                 self.database.mark_interrupted(task_id)
             else:
                 self.database.mark_cancelled(task_id)
         except ResearchRunError as error:
+            self.database.finalize_running_activities(
+                task_id,
+                ResearchActivityStatus.FAILED,
+                "研究任务失败，本活动未能完成",
+            )
             self.database.mark_failed(task_id, str(error))
         except asyncio.CancelledError:
+            self.database.finalize_running_activities(
+                task_id,
+                ResearchActivityStatus.CANCELLED,
+                "服务停止，本活动已中断",
+            )
             self.database.mark_interrupted(task_id)
             raise
         except Exception:
+            self.database.finalize_running_activities(
+                task_id,
+                ResearchActivityStatus.FAILED,
+                "研究任务异常，本活动未能完成",
+            )
             self.database.mark_failed(task_id, "研究运行失败，请查看本地日志")
         finally:
             async with self._lock:

@@ -14,6 +14,21 @@ export interface UploadedFile {
   created_at: string;
 }
 
+export type TaskActivityType = "planning" | "tool" | "retrieval";
+export type TaskActivityStatus = "running" | "succeeded" | "failed" | "cancelled";
+
+export interface TaskActivity {
+  id: string;
+  type: TaskActivityType;
+  status: TaskActivityStatus;
+  title: string;
+  detail: string | null;
+  step_number: number | null;
+  tool_name: string | null;
+  duration_ms: number | null;
+  created_at: string;
+}
+
 export interface ResearchTask {
   id: string;
   task: string;
@@ -25,6 +40,7 @@ export interface ResearchTask {
   message: string;
   error_message: string | null;
   files: UploadedFile[];
+  activities: TaskActivity[];
   rag_enabled: boolean;
   report_available: boolean;
   created_at: string;

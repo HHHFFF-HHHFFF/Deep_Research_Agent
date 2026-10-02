@@ -25,6 +25,7 @@ function taskResponse(overrides: Partial<ResearchTask> = {}): ResearchTask {
     message: "研究任务已创建，正在等待执行",
     error_message: null,
     files: [],
+    activities: [],
     rag_enabled: false,
     report_available: false,
     created_at: "2026-08-19T00:00:00Z",
@@ -122,6 +123,17 @@ describe("研究输入与任务工作区", () => {
         size: 1024,
         created_at: "2026-08-19T00:00:00Z",
       }],
+      activities: [{
+        id: "activity-001",
+        type: "tool",
+        status: "succeeded",
+        title: "检索网页资料",
+        detail: "工具执行完成",
+        step_number: 1,
+        tool_name: "web_searcher",
+        duration_ms: 125,
+        created_at: "2026-08-19T00:00:02Z",
+      }],
       rag_enabled: true,
       report_available: true,
       started_at: "2026-08-19T00:00:01Z",
@@ -147,6 +159,10 @@ describe("研究输入与任务工作区", () => {
     expect(screen.getByText("本地 RAG")).toBeInTheDocument();
     expect(screen.getByText("已启用")).toBeInTheDocument();
     expect(screen.getByText("本地证据.pdf")).toBeInTheDocument();
+    expect(screen.getByText("Agent 执行过程")).toBeInTheDocument();
+    expect(screen.getByText("检索网页资料")).toBeInTheDocument();
+    expect(screen.getByText("web_searcher")).toBeInTheDocument();
+    expect(screen.getByText("耗时 125 毫秒")).toBeInTheDocument();
     expect(screen.queryByText("恶意脚本")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: /下载 Markdown/ })).toHaveAttribute(
       "href",

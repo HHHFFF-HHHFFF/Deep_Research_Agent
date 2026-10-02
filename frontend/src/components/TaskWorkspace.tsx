@@ -1,14 +1,22 @@
 import {
+  CheckCircleOutlined,
   CloseCircleOutlined,
   DownloadOutlined,
   FileTextOutlined,
+  LoadingOutlined,
   ReloadOutlined,
+  ToolOutlined,
 } from "@ant-design/icons";
-import { Alert, Button, Empty, Skeleton, Space, Tag, Typography } from "antd";
+import { Alert, Button, Empty, Skeleton, Tag, Typography } from "antd";
 import { useEffect, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 
-import { researchReportUrl, type ResearchTask, type TaskStatus } from "../api";
+import {
+  researchReportUrl,
+  type ResearchTask,
+  type TaskActivityStatus,
+  type TaskStatus,
+} from "../api";
 import { isTaskActive } from "../useResearchWorkspace";
 
 const { Text, Title } = Typography;
@@ -42,6 +50,13 @@ const STAGE_LABELS: Record<string, string> = {
   interrupted: "研究任务因服务重启而中断",
 };
 
+const ACTIVITY_STATUS_LABELS: Record<TaskActivityStatus, string> = {
+  running: "进行中",
+  succeeded: "已完成",
+  failed: "未完成",
+  cancelled: "已停止",
+};
+
 function formatDuration(milliseconds: number): string {
   const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000));
   const minutes = Math.floor(totalSeconds / 60);
@@ -65,6 +80,12 @@ function useTaskDuration(task: ResearchTask | null): string {
     const end = task.finished_at ? new Date(task.finished_at).getTime() : now;
     return formatDuration(end - start);
   }, [now, task]);
+}
+
+function formatActivityDuration(milliseconds: number | null): string | null {
+  if (milliseconds === null) return null;
+  if (milliseconds < 1000) return `${milliseconds} 毫秒`;
+  return formatDuration(milliseconds);
 }
 
 interface TaskWorkspaceProps {
@@ -140,6 +161,59 @@ export function TaskWorkspace({
             <div className={`stage-message${isTaskActive(task) ? " stage-message-active" : ""}`}>
               <span className="stage-dot" aria-hidden="true" />
               <span>{task.message}</span>
+            </div>
+
+            <div className="activity-section" aria-live="polite">
+              <div className="activity-heading">
+                <div>
+                  <strong>Agent 执行过程</strong>
+                  <small>展示可审阅的行动摘要，不包含模型隐藏推理</small>
+                </div>
+                <Tag>{task.activities.length} 条记录</Tag>
+              </div>
+              {task.activities.length > 0 ? (
+                <ol className="activity-list">
+                  {task.activities.map((activity) => {
+                    const durationLabel = formatActivityDuration(activity.duration_ms);
+                    return (
+                      <li
+                        key={activity.id}
+                        className={`activity-item activity-item-${activity.status}`}
+                      >
+                        <span className="activity-icon" aria-hidden="true">
+                          {activity.status === "running" ? (
+                            <LoadingOutlined spin />
+                          ) : activity.status === "succeeded" ? (
+                            <CheckCircleOutlined />
+                          ) : (
+                            <CloseCircleOutlined />
+                          )}
+                        </span>
+                        <div className="activity-content">
+                          <div className="activity-title-row">
+                            <strong>{activity.title}</strong>
+                            <span>{ACTIVITY_STATUS_LABELS[activity.status]}</span>
+                          </div>
+                          {activity.detail && <small>{activity.detail}</small>}
+                          <div className="activity-meta">
+                            {activity.step_number !== null && (
+                              <span>第 {activity.step_number} 轮</span>
+                            )}
+                            {activity.tool_name && (
+                              <span><ToolOutlined /> {activity.tool_name}</span>
+                            )}
+                            {durationLabel && <span>耗时 {durationLabel}</span>}
+                          </div>
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ol>
+              ) : (
+                <Text className="activity-empty" type="secondary">
+                  任务开始后将在这里显示规划、资料检索和工具执行状态
+                </Text>
+              )}
             </div>
 
             {task.error_message && (

@@ -22,6 +22,7 @@ const taskResponse = {
   message: "研究任务已进入等待队列",
   error_message: null,
   files: [],
+  activities: [],
   rag_enabled: false,
   report_available: false,
   created_at: "2026-08-19T00:00:00Z",

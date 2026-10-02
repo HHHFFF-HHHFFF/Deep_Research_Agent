@@ -18,6 +18,9 @@ from src.api.app import ApiSettings, create_app
 from src.api.database import ResearchDatabase
 from src.api.models import TaskStatus
 from src.application import (
+    ResearchActivity,
+    ResearchActivityStatus,
+    ResearchActivityType,
     ResearchProgress,
     ResearchRequest,
     ResearchResult,
@@ -51,6 +54,25 @@ async def successful_runner(
 ) -> ResearchResult:
     """不访问网络的成功研究替身。"""
     await _emit(on_progress, ResearchStage.RESEARCHING, "正在执行离线研究")
+    if on_progress is not None:
+        activity_result = on_progress(
+            ResearchProgress(
+                stage=ResearchStage.RESEARCHING,
+                message="检索网页资料",
+                activity=ResearchActivity(
+                    id="activity-search",
+                    type=ResearchActivityType.TOOL,
+                    status=ResearchActivityStatus.SUCCEEDED,
+                    title="检索网页资料",
+                    detail="工具执行完成",
+                    step_number=1,
+                    tool_name="web_searcher",
+                    duration_ms=125,
+                ),
+            )
+        )
+        if inspect.isawaitable(activity_result):
+            await activity_result
     return ResearchResult(
         task=request.task,
         report=f"# 离线研究报告\n\n主题：{request.task}",
@@ -186,6 +208,10 @@ async def test_successful_task_can_be_polled_and_downloaded(
     assert completed["stage"] == "completed"
     assert completed["actual_model_name"] == "qwen/qwen3-max"
     assert completed["report_available"] is True
+    assert completed["activities"][-1]["id"] == "activity-search"
+    assert completed["activities"][-1]["status"] == "succeeded"
+    assert completed["activities"][-1]["tool_name"] == "web_searcher"
+    assert completed["activities"][-1]["duration_ms"] == 125
 
     report = await client.get(f"/api/tasks/{task_id}/report")
     assert report.status_code == 200
@@ -410,6 +436,22 @@ async def test_only_one_task_runs_and_active_task_can_be_cancelled(
         cancel_event: asyncio.Event | None,
     ) -> ResearchResult:
         assert cancel_event is not None
+        if on_progress is not None:
+            activity_result = on_progress(
+                ResearchProgress(
+                    stage=ResearchStage.RESEARCHING,
+                    message="检索网页资料",
+                    activity=ResearchActivity(
+                        id="activity-running",
+                        type=ResearchActivityType.TOOL,
+                        status=ResearchActivityStatus.RUNNING,
+                        title="检索网页资料",
+                        tool_name="web_searcher",
+                    ),
+                )
+            )
+            if inspect.isawaitable(activity_result):
+                await activity_result
         started.set()
         await cancel_event.wait()
         raise ResearchCancelledError("研究任务已取消")
@@ -434,6 +476,8 @@ async def test_only_one_task_runs_and_active_task_can_be_cancelled(
         )
         assert final["stage"] == "cancelled"
         assert final["report_available"] is False
+        assert final["activities"][0]["status"] == "cancelled"
+        assert final["activities"][0]["detail"] == "研究任务已取消，本活动未继续执行"
 
 
 @pytest.mark.asyncio

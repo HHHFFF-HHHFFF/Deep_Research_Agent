@@ -303,6 +303,75 @@ button, input, textarea { font: inherit; }
 }
 .stage-dot { width: 8px; height: 8px; flex: 0 0 auto; background: #8196a7; border-radius: 50%; }
 .stage-message-active .stage-dot { background: #0e7490; box-shadow: 0 0 0 5px rgba(14, 116, 144, 0.11); }
+.activity-section {
+  margin-top: 16px;
+  padding: 16px;
+  background: #f8fbfb;
+  border: 1px solid #e1ecee;
+  border-radius: 12px;
+}
+.activity-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.activity-heading > div { display: flex; flex-direction: column; gap: 3px; }
+.activity-heading strong { color: #24475c; font-size: 14px; }
+.activity-heading small { color: #7b8d9a; font-size: 11px; line-height: 1.5; }
+.activity-heading .ant-tag { margin: 0; white-space: nowrap; }
+.activity-list {
+  margin: 16px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  list-style: none;
+}
+.activity-item {
+  position: relative;
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  gap: 10px;
+  padding-bottom: 16px;
+}
+.activity-item:last-child { padding-bottom: 0; }
+.activity-item:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  top: 24px;
+  bottom: 2px;
+  left: 12px;
+  width: 1px;
+  background: #cfe0e3;
+}
+.activity-icon {
+  position: relative;
+  z-index: 1;
+  width: 25px;
+  height: 25px;
+  display: grid;
+  place-items: center;
+  color: #0e7490;
+  background: #edf8f8;
+  border-radius: 50%;
+}
+.activity-item-succeeded .activity-icon { color: #138a66; background: #e8f7f1; }
+.activity-item-failed .activity-icon,
+.activity-item-cancelled .activity-icon { color: #cf3f4f; background: #fff0f1; }
+.activity-content { min-width: 0; padding-top: 2px; }
+.activity-title-row { display: flex; justify-content: space-between; gap: 12px; }
+.activity-title-row strong { color: #29475c; font-size: 13px; }
+.activity-title-row > span { color: #758b99; font-size: 11px; white-space: nowrap; }
+.activity-content > small {
+  display: block;
+  margin-top: 4px;
+  color: #637b8b;
+  font-size: 11px;
+  line-height: 1.55;
+}
+.activity-meta { margin-top: 6px; display: flex; flex-wrap: wrap; gap: 10px; }
+.activity-meta span { color: #8799a5; font-size: 10px; }
+.activity-empty.ant-typography { display: block; margin-top: 14px; font-size: 12px; }
 .task-summary .ant-alert { margin-top: 12px; }
 .task-actions { margin-top: 16px; display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .report-download {

@@ -7,6 +7,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
+from src.application import ResearchActivityStatus, ResearchActivityType
+
 
 class TaskStatus(str, Enum):
     """研究任务可以持久化的生命周期状态。"""
@@ -75,6 +77,20 @@ class UploadedFileResponse(BaseModel):
     created_at: datetime
 
 
+class TaskActivityResponse(BaseModel):
+    """一次可安全展示给用户的智能体执行活动。"""
+
+    id: str
+    type: ResearchActivityType
+    status: ResearchActivityStatus
+    title: str
+    detail: str | None = None
+    step_number: int | None = None
+    tool_name: str | None = None
+    duration_ms: int | None = None
+    created_at: datetime
+
+
 class TaskResponse(BaseModel):
     """任务详情与轮询共用的响应。"""
 
@@ -88,6 +104,7 @@ class TaskResponse(BaseModel):
     message: str
     error_message: str | None = None
     files: list[UploadedFileResponse] = Field(default_factory=list)
+    activities: list[TaskActivityResponse] = Field(default_factory=list)
     rag_enabled: bool = False
     report_available: bool = False
     created_at: datetime

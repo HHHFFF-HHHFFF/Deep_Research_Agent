@@ -6,11 +6,27 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
-from sqlalchemy import JSON, URL, DateTime, String, Text, create_engine, select, update
+from sqlalchemy import (
+    JSON,
+    URL,
+    DateTime,
+    Integer,
+    String,
+    Text,
+    create_engine,
+    delete,
+    select,
+    update,
+)
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
 from src.api.models import TERMINAL_TASK_STATUSES, TaskStage, TaskStatus
+from src.application import (
+    ResearchActivity,
+    ResearchActivityStatus,
+    ResearchActivityType,
+)
 
 
 def utc_now() -> datetime:
@@ -68,6 +84,23 @@ class UploadedFileRow(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
+class TaskActivityRow(Base):
+    """可供界面恢复的安全研究活动记录。"""
+
+    __tablename__ = "task_activities"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    task_id: Mapped[str] = mapped_column(String(36), index=True)
+    type: Mapped[str] = mapped_column(String(32))
+    status: Mapped[str] = mapped_column(String(32))
+    title: Mapped[str] = mapped_column(String(200))
+    detail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    step_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    tool_name: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    duration_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 @dataclass(frozen=True)
 class TaskRecord:
     """脱离数据库会话后仍可安全使用的任务记录。"""
@@ -99,6 +132,22 @@ class StoredFileRecord:
     created_at: datetime
 
 
+@dataclass(frozen=True)
+class TaskActivityRecord:
+    """脱离数据库会话后可安全返回的活动记录。"""
+
+    id: str
+    task_id: str
+    type: ResearchActivityType
+    status: ResearchActivityStatus
+    title: str
+    detail: str | None
+    step_number: int | None
+    tool_name: str | None
+    duration_ms: int | None
+    created_at: datetime
+
+
 def _task_record(row: ResearchTaskRow) -> TaskRecord:
     return TaskRecord(
         id=row.id,
@@ -124,6 +173,21 @@ def _file_record(row: UploadedFileRow) -> StoredFileRecord:
         original_name=row.original_name,
         stored_path=row.stored_path,
         size=row.size,
+        created_at=_ensure_utc(row.created_at) or utc_now(),
+    )
+
+
+def _activity_record(row: TaskActivityRow) -> TaskActivityRecord:
+    return TaskActivityRecord(
+        id=row.id,
+        task_id=row.task_id,
+        type=ResearchActivityType(row.type),
+        status=ResearchActivityStatus(row.status),
+        title=row.title,
+        detail=row.detail,
+        step_number=row.step_number,
+        tool_name=row.tool_name,
+        duration_ms=row.duration_ms,
         created_at=_ensure_utc(row.created_at) or utc_now(),
     )
 
@@ -225,6 +289,61 @@ class ResearchDatabase:
             ).all()
         return [_task_record(row) for row in rows]
 
+    def upsert_activity(self, task_id: str, activity: ResearchActivity) -> None:
+        """按活动编号新增或更新状态，避免开始和结束各占一行。"""
+        with self._session_factory.begin() as session:
+            if session.get(ResearchTaskRow, task_id) is None:
+                return
+            row = session.get(TaskActivityRow, activity.id)
+            if row is None:
+                row = TaskActivityRow(
+                    id=activity.id,
+                    task_id=task_id,
+                    type=activity.type.value,
+                    status=activity.status.value,
+                    title=activity.title,
+                    detail=activity.detail,
+                    step_number=activity.step_number,
+                    tool_name=activity.tool_name,
+                    duration_ms=activity.duration_ms,
+                    created_at=activity.created_at,
+                )
+                session.add(row)
+                return
+            if row.task_id != task_id:
+                return
+            row.status = activity.status.value
+            row.title = activity.title
+            row.detail = activity.detail
+            row.duration_ms = activity.duration_ms
+
+    def list_task_activities(self, task_id: str) -> list[TaskActivityRecord]:
+        """按发生顺序返回指定任务的执行活动。"""
+        with self._session_factory() as session:
+            rows = session.scalars(
+                select(TaskActivityRow)
+                .where(TaskActivityRow.task_id == task_id)
+                .order_by(TaskActivityRow.created_at.asc(), TaskActivityRow.id.asc())
+            ).all()
+        return [_activity_record(row) for row in rows]
+
+    def finalize_running_activities(
+        self,
+        task_id: str,
+        status: ResearchActivityStatus,
+        detail: str,
+    ) -> None:
+        """任务终止时收敛仍处于运行中的活动，避免界面永久转圈。"""
+        with self._session_factory.begin() as session:
+            session.execute(
+                update(TaskActivityRow)
+                .where(
+                    TaskActivityRow.task_id == task_id,
+                    TaskActivityRow.status == ResearchActivityStatus.RUNNING.value,
+                )
+                .values(status=status.value, detail=detail)
+            )
+
     def get_task_orphan_files(self, task_id: str) -> list[StoredFileRecord]:
         """返回仅由指定任务引用、可随任务一同清理的上传文件。"""
         with self._session_factory() as session:
@@ -251,6 +370,9 @@ class ResearchDatabase:
             task_row = session.get(ResearchTaskRow, task_id)
             if task_row is None:
                 return False
+            session.execute(
+                delete(TaskActivityRow).where(TaskActivityRow.task_id == task_id)
+            )
             session.delete(task_row)
             for file_id in orphan_file_ids:
                 file_row = session.get(UploadedFileRow, file_id)

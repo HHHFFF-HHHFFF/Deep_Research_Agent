@@ -1,14 +1,24 @@
 """提供tool calling agent相关实现。"""
 
 import asyncio
+import inspect
 import os
+import time
+from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, cast
 
 from langchain_core.messages import BaseMessage
 from pydantic import ConfigDict, Field
 
 from src.agent.types import Agent, AgentExtra, AgentResponse, ThinkOutput
+from src.application import (
+    ResearchActivity,
+    ResearchActivityStatus,
+    ResearchActivityType,
+    ResearchProgress,
+    ResearchStage,
+)
 from src.config import config
 from src.environment.server import ecp
 from src.logger import logger
@@ -20,6 +30,20 @@ from src.skill.server import scp
 from src.tool.server import tcp
 from src.tracer import Record, Tracer
 from src.utils import dedent, parse_tool_args
+
+ActivityCallback = Callable[[ResearchProgress], Awaitable[None] | None]
+
+TOOL_TITLES = {
+    "deep_researcher": "执行深度网页研究",
+    "deep_analyzer": "分析并整合研究证据",
+    "web_searcher": "检索网页资料",
+    "mdify": "解析研究资料",
+    "reporter": "整理研究报告",
+    "todo": "更新研究计划",
+    "file_reader": "读取研究文件",
+    "file_editor": "写入研究文件",
+    "done": "提交研究结果",
+}
 
 
 @AGENT.register_module(force=True)
@@ -80,6 +104,32 @@ class ToolCallingAgent(Agent):
         """初始化组件及其依赖资源。"""
         self.tracer_save_path = os.path.join(self.workdir, "tracer.json")
         await super().initialize()
+
+    @staticmethod
+    async def _emit_activity(
+        callback: ActivityCallback | None,
+        activity: ResearchActivity,
+    ) -> None:
+        """发送不含隐藏推理、工具参数和原始输出的活动摘要。"""
+        if callback is None:
+            return
+        try:
+            result = callback(
+                ResearchProgress(
+                    stage=ResearchStage.RESEARCHING,
+                    message=activity.title,
+                    activity=activity,
+                )
+            )
+            if inspect.isawaitable(result):
+                await cast(Awaitable[None], result)
+        except Exception as error:
+            logger.warning(f"| ⚠️ 研究活动记录失败：{type(error).__name__}")
+
+    @staticmethod
+    def _tool_title(tool_name: str) -> str:
+        """把内部工具名称转换为用户可理解的安全标题。"""
+        return TOOL_TITLES.get(tool_name, f"执行研究工具：{tool_name}")
 
     async def _get_tracer_and_record(self) -> tuple[Tracer, Record]:
         """实现 `_get_tracer_and_record` 的业务逻辑。"""
@@ -170,6 +220,17 @@ class ToolCallingAgent(Agent):
         done = False
         result = None
         reasoning = None
+        on_progress = cast(ActivityCallback | None, kwargs.get("on_progress"))
+        planning_started = time.perf_counter()
+        planning_finished = False
+        planning_activity = ResearchActivity(
+            type=ResearchActivityType.PLANNING,
+            status=ResearchActivityStatus.RUNNING,
+            title=f"第 {step_number + 1} 轮：规划下一步行动",
+            detail="正在根据当前证据选择后续研究工具",
+            step_number=step_number + 1,
+        )
+        await self._emit_activity(on_progress, planning_activity)
 
         record_data = {
             "thinking": None,
@@ -190,6 +251,19 @@ class ToolCallingAgent(Agent):
             memory = think_output.memory
             next_goal = think_output.next_goal
             actions = think_output.actions
+            planning_finished = True
+            await self._emit_activity(
+                on_progress,
+                planning_activity.model_copy(
+                    update={
+                        "status": ResearchActivityStatus.SUCCEEDED,
+                        "detail": f"已规划 {len(actions)} 个后续行动",
+                        "duration_ms": round(
+                            (time.perf_counter() - planning_started) * 1000
+                        ),
+                    }
+                ),
+            )
 
             record_data["thinking"] = thinking
             record_data["evaluation_previous_goal"] = evaluation_previous_goal
@@ -215,68 +289,105 @@ class ToolCallingAgent(Agent):
                     f"| 📝 Action {i + 1}/{len(actions)}: [{action_type}] {action_name}"
                 )
                 logger.info(f"| 📝 Args: {action_args}")
+                activity_started = time.perf_counter()
+                activity = ResearchActivity(
+                    type=ResearchActivityType.TOOL,
+                    status=ResearchActivityStatus.RUNNING,
+                    title=self._tool_title(action_name),
+                    detail=f"第 {step_number + 1} 轮，第 {i + 1} 个行动",
+                    step_number=step_number + 1,
+                    tool_name=action_name,
+                )
+                await self._emit_activity(on_progress, activity)
 
-                if action_type == "skill":
-                    # 说明相关实现细节。
-                    response = await scp(
-                        name=action_name,
-                        input=action_args,
-                        ctx=ctx,
-                    )
-                    action_result = response.message
-                    action_extra = (
-                        response.extra if hasattr(response, "extra") else None
-                    )
+                try:
+                    if action_type == "skill":
+                        response = await scp(
+                            name=action_name,
+                            input=action_args,
+                            ctx=ctx,
+                        )
+                        action_result = response.message
+                        action_extra = (
+                            response.extra if hasattr(response, "extra") else None
+                        )
+                        action_succeeded = bool(response.success)
 
-                    logger.info(
-                        f"| ✅ Skill '{action_name}' completed (success={response.success})"
-                    )
-                    logger.info(f"| 📄 Result: {str(action_result)[:500]}")
-
-                    action_dict = action.model_dump()
-                    action_dict["output"] = action_result
-                    action_results.append(action_dict)
-
-                    record_extra = {}
-                    record_extra.update(action_dict)
-                    if action_extra is not None:
-                        record_extra["extra"] = action_extra.model_dump()
-                    record_data["actions"].append(record_extra)
-
-                else:
-                    # 处理工具调用。
-                    tool_response = await tcp(
-                        name=action_name,
-                        input=action_args,
-                        ctx=ctx,
-                    )
-                    action_result = tool_response.message
-                    action_extra = (
-                        tool_response.extra if hasattr(tool_response, "extra") else None
-                    )
-
-                    logger.info(f"| ✅ Tool '{action_name}' completed")
-                    logger.info(f"| 📄 Result: {action_result!s}")
-
-                    action_dict = action.model_dump()
-                    action_dict["output"] = action_result
-                    action_results.append(action_dict)
-
-                    record_extra = {}
-                    record_extra.update(action_dict)
-                    if action_extra is not None:
-                        record_extra["extra"] = action_extra.model_dump()
-                    record_data["actions"].append(record_extra)
-
-                    if action_name == "done":
-                        done = True
-                        result = action_result
-                        reasoning = (
-                            action_extra.data.get("reasoning", None)
-                            if action_extra and action_extra.data
+                        logger.info(
+                            f"| ✅ Skill '{action_name}' completed (success={response.success})"
+                        )
+                        logger.info(f"| 📄 Result: {str(action_result)[:500]}")
+                    else:
+                        tool_response = await tcp(
+                            name=action_name,
+                            input=action_args,
+                            ctx=ctx,
+                        )
+                        action_result = tool_response.message
+                        action_extra = (
+                            tool_response.extra
+                            if hasattr(tool_response, "extra")
                             else None
                         )
-                        break
+                        action_succeeded = bool(tool_response.success)
+
+                        logger.info(f"| ✅ Tool '{action_name}' completed")
+                        logger.info(f"| 📄 Result: {action_result!s}")
+                except Exception:
+                    await self._emit_activity(
+                        on_progress,
+                        activity.model_copy(
+                            update={
+                                "status": ResearchActivityStatus.FAILED,
+                                "detail": "工具执行失败，智能体将评估后续处理方式",
+                                "duration_ms": round(
+                                    (time.perf_counter() - activity_started) * 1000
+                                ),
+                            }
+                        ),
+                    )
+                    raise
+
+                await self._emit_activity(
+                    on_progress,
+                    activity.model_copy(
+                        update={
+                            "status": (
+                                ResearchActivityStatus.SUCCEEDED
+                                if action_succeeded
+                                else ResearchActivityStatus.FAILED
+                            ),
+                            "detail": (
+                                "工具执行完成"
+                                if action_succeeded
+                                else "工具返回失败状态，智能体将评估后续处理方式"
+                            ),
+                            "duration_ms": round(
+                                (time.perf_counter() - activity_started) * 1000
+                            ),
+                        }
+                    ),
+                )
+
+                action_dict = action.model_dump()
+                action_dict["output"] = action_result
+                action_results.append(action_dict)
+
+                record_extra = {}
+                record_extra.update(action_dict)
+                if action_extra is not None:
+                    record_extra["extra"] = action_extra.model_dump()
+                record_data["actions"].append(record_extra)
+
+                if action_type != "skill" and action_name == "done":
+                    done = True
+                    result = action_result
+                    reasoning = (
+                        action_extra.data.get("reasoning", None)
+                        if action_extra and action_extra.data
+                        else None
+                    )
+                    break
 
             event_data = {
                 "thinking": thinking,
@@ -305,6 +416,19 @@ class ToolCallingAgent(Agent):
                 )
 
         except Exception as e:
+            if not planning_finished:
+                await self._emit_activity(
+                    on_progress,
+                    planning_activity.model_copy(
+                        update={
+                            "status": ResearchActivityStatus.FAILED,
+                            "detail": "本轮行动规划失败，智能体将尝试继续",
+                            "duration_ms": round(
+                                (time.perf_counter() - planning_started) * 1000
+                            ),
+                        }
+                    ),
+                )
             logger.error(f"| Error in thinking and tool step: {e}")
 
         response_dict = {"done": done, "result": result, "reasoning": reasoning}
@@ -317,6 +441,7 @@ class ToolCallingAgent(Agent):
         logger.info(f"| 🚀 Starting ToolCallingAgent: {task}")
 
         ctx = kwargs.get("ctx", None)
+        on_progress = cast(ActivityCallback | None, kwargs.get("on_progress"))
         if ctx is None:
             ctx = SessionContext()
 
@@ -325,10 +450,46 @@ class ToolCallingAgent(Agent):
 
         if files:
             logger.info(f"| 📂 Attached files: {files}")
-            files = await asyncio.gather(
-                *[self._extract_file_content(file) for file in files]
+            retrieval_started = time.perf_counter()
+            retrieval_activity = ResearchActivity(
+                type=ResearchActivityType.RETRIEVAL,
+                status=ResearchActivityStatus.RUNNING,
+                title="解析并检索本地资料",
+                detail=f"正在处理 {len(files)} 份本地资料",
+                tool_name="local_rag",
             )
-            enhanced_task = await self._generate_enhanced_task(task, files, ctx=ctx)
+            await self._emit_activity(on_progress, retrieval_activity)
+            try:
+                files = await asyncio.gather(
+                    *[self._extract_file_content(file) for file in files]
+                )
+                enhanced_task = await self._generate_enhanced_task(task, files, ctx=ctx)
+            except Exception:
+                await self._emit_activity(
+                    on_progress,
+                    retrieval_activity.model_copy(
+                        update={
+                            "status": ResearchActivityStatus.FAILED,
+                            "detail": "本地资料解析或检索失败",
+                            "duration_ms": round(
+                                (time.perf_counter() - retrieval_started) * 1000
+                            ),
+                        }
+                    ),
+                )
+                raise
+            await self._emit_activity(
+                on_progress,
+                retrieval_activity.model_copy(
+                    update={
+                        "status": ResearchActivityStatus.SUCCEEDED,
+                        "detail": f"已完成 {len(files)} 份本地资料的相关内容检索",
+                        "duration_ms": round(
+                            (time.perf_counter() - retrieval_started) * 1000
+                        ),
+                    }
+                ),
+            )
         else:
             enhanced_task = task
 
@@ -369,7 +530,12 @@ class ToolCallingAgent(Agent):
 
             # 说明相关实现细节。
             response = await self._think_and_tool(
-                messages, task_id, step_number, ctx=ctx, record=record
+                messages,
+                task_id,
+                step_number,
+                ctx=ctx,
+                record=record,
+                on_progress=on_progress,
             )
             step_number += 1
 

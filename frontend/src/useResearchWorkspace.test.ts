@@ -25,6 +25,7 @@ function taskResponse(overrides: Partial<ResearchTask> = {}): ResearchTask {
     message: "正在执行研究",
     error_message: null,
     files: [],
+    activities: [],
     rag_enabled: false,
     report_available: false,
     created_at: "2026-08-19T00:00:00Z",

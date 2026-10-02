@@ -56,6 +56,7 @@ async def test_run_research_returns_report_and_emits_stages(
     async def fake_invoke(
         request: ResearchRequest,
         ctx: SessionContext,
+        on_progress: Any = None,
     ) -> SimpleNamespace:
         assert request.task == "调研多文档 RAG"
         assert ctx is not None
@@ -108,6 +109,7 @@ async def test_run_research_prefers_generated_markdown_report(
     async def fake_invoke(
         request: ResearchRequest,
         ctx: SessionContext,
+        on_progress: Any = None,
     ) -> SimpleNamespace:
         session_id = str(ctx.id)
         (tmp_path / f"{session_id}.md").write_text(
@@ -137,6 +139,7 @@ async def test_run_research_converts_agent_failure_to_stable_error(
     async def fake_invoke(
         request: ResearchRequest,
         ctx: SessionContext,
+        on_progress: Any = None,
     ) -> SimpleNamespace:
         return SimpleNamespace(success=False, message="达到最大研究步数")
 
@@ -171,6 +174,7 @@ async def test_run_research_honors_cancel_event_before_agent_call(
     async def unexpected_invoke(
         request: ResearchRequest,
         ctx: SessionContext,
+        on_progress: Any = None,
     ) -> SimpleNamespace:
         pytest.fail("取消后不应调用智能体")
 
@@ -201,6 +205,7 @@ async def test_run_research_hides_unexpected_error_details(
     async def fake_invoke(
         request: ResearchRequest,
         ctx: SessionContext,
+        on_progress: Any = None,
     ) -> SimpleNamespace:
         raise RuntimeError("Authorization: secret-token")
 

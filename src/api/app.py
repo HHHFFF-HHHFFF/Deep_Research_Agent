@@ -21,6 +21,7 @@ from src.api.models import (
     ErrorDetail,
     ErrorResponse,
     HealthResponse,
+    TaskActivityResponse,
     TaskCreateRequest,
     TaskListResponse,
     TaskResponse,
@@ -98,6 +99,7 @@ def _task_response(
     record: TaskRecord,
 ) -> TaskResponse:
     files = database.get_files(record.file_ids)
+    activities = database.list_task_activities(record.id)
     return TaskResponse(
         id=record.id,
         task=record.task,
@@ -109,6 +111,20 @@ def _task_response(
         message=record.message,
         error_message=record.error_message,
         files=[_file_response(file) for file in files],
+        activities=[
+            TaskActivityResponse(
+                id=activity.id,
+                type=activity.type,
+                status=activity.status,
+                title=activity.title,
+                detail=activity.detail,
+                step_number=activity.step_number,
+                tool_name=activity.tool_name,
+                duration_ms=activity.duration_ms,
+                created_at=activity.created_at,
+            )
+            for activity in activities
+        ],
         rag_enabled=bool(files),
         report_available=(
             record.status is TaskStatus.SUCCEEDED and record.report_path is not None

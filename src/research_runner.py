@@ -195,6 +195,7 @@ async def _initialize_runtime(
 async def _invoke_agent(
     request: ResearchRequest,
     ctx: SessionContext,
+    on_progress: ProgressCallback | None = None,
 ) -> AgentExecutionResponse:
     """调用现有工具型 Agent，不改写其执行循环。"""
     from src.agent import acp
@@ -204,6 +205,7 @@ async def _invoke_agent(
         name="tool_calling",
         input={"task": request.task, "files": request.files},
         ctx=ctx,
+        on_progress=on_progress,
     )
     if not isinstance(response, AgentResponse):
         raise ResearchRunError("智能体返回了无法识别的结果")
@@ -265,7 +267,7 @@ async def run_research(
 
         ctx = SessionContext()
         response = await _await_with_cancellation(
-            lambda: _invoke_agent(request, ctx),
+            lambda: _invoke_agent(request, ctx, on_progress),
             cancel_event,
         )
         if not response.success:
