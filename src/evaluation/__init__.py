@@ -1,0 +1,51 @@
+"""Agent 与 RAG 离线评测公共接口。"""
+
+from .agent_results import (
+    AgentEvaluationCase,
+    AgentEvaluationReport,
+    AgentEvaluationSuite,
+    AgentExpectedResult,
+    AgentResultSnapshot,
+    EvaluationTaskStatus,
+    RatioMetric,
+    evaluate_agent_case,
+    evaluate_agent_suite,
+    render_agent_report_markdown,
+)
+from .rag import (
+    OfflineHashFaissService,
+    RagEvaluationCase,
+    RagEvaluationDataset,
+    RagEvaluationDocument,
+    RagEvaluationReport,
+    RagMetricsAtK,
+    RagRelevantEvidence,
+    evaluate_rag_rankings,
+    offline_hash_embeddings,
+    render_rag_report_markdown,
+    run_offline_rag_evaluation,
+)
+
+__all__ = [
+    "AgentEvaluationCase",
+    "AgentEvaluationReport",
+    "AgentEvaluationSuite",
+    "AgentExpectedResult",
+    "AgentResultSnapshot",
+    "EvaluationTaskStatus",
+    "OfflineHashFaissService",
+    "RagEvaluationCase",
+    "RagEvaluationDataset",
+    "RagEvaluationDocument",
+    "RagEvaluationReport",
+    "RagMetricsAtK",
+    "RagRelevantEvidence",
+    "RatioMetric",
+    "evaluate_agent_case",
+    "evaluate_agent_suite",
+    "evaluate_rag_rankings",
+    "offline_hash_embeddings",
+    "render_agent_report_markdown",
+    "render_rag_report_markdown",
+    "run_offline_rag_evaluation",
+]

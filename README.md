@@ -48,10 +48,12 @@
 - 网页来源与本地 RAG 片段统一为可持久化证据，并在报告旁展示来源卡片
 - 报告引用与本次真实采集来源进行确定性核验，本地引用可跳转到对应证据片段
 - 未匹配引用给出明确警告，服务器本地文件路径不会返回浏览器
+- 15 条人工标注的 RAG 离线回归集，计算 Recall@K、HitRate@K 与 MRR@K
+- Agent 安全快照评测，检查终态、活动收敛、必需工具、证据和引用可追溯性
 - P1-M1 全仓 Ruff 规范清理
 - P1-M2a 至 P1-M2d 高价值类型修复
 
-W0 至 W6、A1 和 A2 已完成：稳定 Web 界面、真实格式本地 RAG、单端口生产启动、Agent 执行过程可观测以及证据链与引用核验已经形成闭环。执行时间线只展示行动摘要，不记录模型隐藏的逐字推理、工具参数或原始输出；引用核验只判断引用是否来自本次真实证据，不宣称能够自动证明正文结论正确。
+W0 至 W6、A1 至 A3 已完成：稳定 Web 界面、真实格式本地 RAG、单端口生产启动、Agent 执行过程可观测、证据链与引用核验以及离线回归评测已经形成闭环。执行时间线只展示行动摘要，不记录模型隐藏的逐字推理、工具参数或原始输出；引用与评测只判断可观测结构和来源一致性，不宣称能够自动证明正文结论正确。
 
 ## 目标技术栈
 
@@ -67,6 +69,7 @@ W0 至 W6、A1 和 A2 已完成：稳定 Web 界面、真实格式本地 RAG、�
 | 大模型 | Qwen、DeepSeek、OpenAI 兼容接口 | 工具调用、分析和报告生成 |
 | 网页研究 | Crawl4AI、DDGS、HTTPX | 网页搜索、抓取和解析 |
 | 本地 RAG | FAISS、Qwen Embedding | 本地文档向量索引与 Top-K 检索 |
+| 离线评测 | Pydantic、NumPy、FAISS | RAG 排名指标与 Agent 安全快照结构回归 |
 | 质量检查 | pytest、Ruff、mypy、前端类型检查与组件测试 | 离线验证后端与关键交互 |
 
 FastAPI、SQLite、单进程任务管理以及 React、Vite、Ant Design 单页界面均已落地。现有 Agent、命令行、本地 RAG、后端接口、任务闭环和报告页面均可运行。
@@ -98,12 +101,14 @@ FastAPI + 单进程 AsyncIO 任务管理
 ```text
 configs/       研究场景与模型配置
 docs/          项目范围、技术需求和开发计划
+evals/         固定 RAG 标注集与 Agent 安全快照格式示例
 examples/      当前命令行入口
 frontend/      React、TypeScript、Vite 单页前端
 scripts/       单端口生产启动脚本
 src/
   api/         FastAPI、SQLite 和单任务管理
   application/ 研究输入、阶段和结果模型
+  evaluation/  Agent 与 RAG 离线评测模型、指标和报告
   research_runner.py 命令行与后续 API 共用的异步研究入口
   document_retriever.py 本地文档切分与 FAISS 检索
   agent/       工具型 Agent 执行循环
@@ -232,13 +237,31 @@ pnpm dev
 
 Web 上传限制为最多 5 个文件、单文件不超过 10 MB、单次研究文件总量不超过 25 MB。服务器会校验 PDF／DOCX 文件结构和实际解析结果，空白、伪格式、超时或文字过长的资料不会进入 Agent。
 
+## Agent 与 RAG 离线评测
+
+RAG 回归评测完全离线运行，使用 15 条人工标注问题、固定哈希向量和真实 FAISS：
+
+```powershell
+python scripts/evaluate_rag.py
+```
+
+当前固定结果为 Recall@4 100.00%、MRR@4 93.33%、HitRate@4 100.00%，共生成 7 个真实切分片段，覆盖同一文档的多片段排序。该结果用于检查切分、索引和排名是否回归，不代表线上 Qwen Embedding 的语义能力。
+
+Agent 结果评测读取不含隐藏推理和原始工具数据的安全快照；未知字段、重复编号以及引用计数与证据不一致的数据会在评测前被拒绝：
+
+```powershell
+python scripts/evaluate_agent_results.py
+```
+
+两条命令都会在 `workdir/evaluations/` 生成 JSON 和 Markdown 报告。详细指标、输入格式和能力边界参见[离线评测说明](docs/EVALUATION.md)。
+
 ## 离线质量检查
 
 ```powershell
 python -m pytest -q -p no:cacheprovider
 python -m ruff check .
 python -m ruff format --check .
-python -m mypy --no-incremental --follow-imports=skip --ignore-missing-imports src/application src/document_parser.py src/document_retriever.py src/api
+python -m mypy --no-incremental --follow-imports=skip --ignore-missing-imports src/application src/document_parser.py src/document_retriever.py src/api src/evaluation scripts/evaluate_rag.py scripts/evaluate_agent_results.py
 python -m compileall -q src examples scripts tests
 Set-Location frontend
 pnpm typecheck
@@ -246,7 +269,7 @@ pnpm test
 pnpm build
 ```
 
-mypy 当前聚焦 W1 至 W6 新增的稳定应用边界，不把低收益的历史框架类型问题伪装成已解决。所有测试均使用离线替身，不会调用真实模型或网页服务。
+mypy 当前聚焦 W1 至 W6、A1 至 A3 的稳定应用边界，不把低收益的历史框架类型问题伪装成已解决。所有自动化测试与 A3 固定基准均不会调用真实模型或网页服务。
 
 ## 设计文档
 
@@ -255,6 +278,7 @@ mypy 当前聚焦 W1 至 W6 新增的稳定应用边界，不把低收益的历�
 - [技术需求](docs/TECHNICAL_REQUIREMENTS.md)
 - [演示流程与故障排查](docs/DEMO_AND_TROUBLESHOOTING.md)
 - [架构与设计说明](docs/ARCHITECTURE.md)
+- [Agent 与 RAG 离线评测](docs/EVALUATION.md)
 - [许可证中文说明](LICENSE_zh.md)
 
 ## 范围原则
