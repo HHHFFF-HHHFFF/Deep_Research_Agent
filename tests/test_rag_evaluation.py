@@ -159,7 +159,7 @@ def test_full_rag_evaluation_uses_real_faiss_without_online_api(
     threshold = next(
         metric for metric in report.metrics if metric.k == report.thresholds.k
     )
-    assert report.total_cases == 15
+    assert report.total_cases == 50
     assert report.indexed_chunks > len(dataset.documents)
     assert report.passed is True
     assert threshold.recall >= dataset.thresholds.minimum_recall

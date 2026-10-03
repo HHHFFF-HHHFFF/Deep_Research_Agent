@@ -128,6 +128,216 @@
         {"source": "任务稳定性.md", "contains": "SQLite 持久化任务、文件关联、报告路径和活动记录"}
       ],
       "tags": ["架构"]
+    },
+    {
+      "id": "rag-016",
+      "query": "空白资料、伪格式文件或解析失败的上传内容会在什么时候被拒绝？",
+      "relevant": [{"source": "本地RAG.md", "contains": "空白资料、伪格式文件和无法解析的内容会在进入向量流程前被拒绝"}],
+      "tags": ["解析", "校验"]
+    },
+    {
+      "id": "rag-017",
+      "query": "为什么同一个上传文件不需要在研究阶段反复转换？",
+      "relevant": [{"source": "本地RAG.md", "contains": "研究阶段复用缓存，避免同一文件被重复转换"}],
+      "tags": ["缓存"]
+    },
+    {
+      "id": "rag-018",
+      "query": "上传文档正文在进入 Agent 前应被当作可信指令还是不可信证据？",
+      "relevant": [{"source": "本地RAG.md", "contains": "资料正文始终被标记为不可信证据"}],
+      "tags": ["安全", "提示注入"]
+    },
+    {
+      "id": "rag-019",
+      "query": "文档切分时会优先选择哪些自然边界？",
+      "relevant": [{"source": "本地RAG.md", "contains": "优先在段落、换行或句号附近寻找自然边界"}],
+      "tags": ["切分"]
+    },
+    {
+      "id": "rag-020",
+      "query": "片段重叠长度必须满足什么约束？",
+      "relevant": [{"source": "本地RAG.md", "contains": "重叠区域用于保留跨段上下文，但必须小于片段长度"}],
+      "tags": ["切分", "重叠"]
+    },
+    {
+      "id": "rag-021",
+      "query": "DeepSeek 作为研究模型时能否继续使用 Qwen Embedding？",
+      "relevant": [{"source": "本地RAG.md", "contains": "聊天模型与 Embedding 模型独立配置"}],
+      "tags": ["模型路由"]
+    },
+    {
+      "id": "rag-022",
+      "query": "FAISS 片段的 metadata 保存哪些定位与去重信息？",
+      "relevant": [{"source": "本地RAG.md", "contains": "metadata 同时保存来源文件名、从零开始的片段编号与整份文档哈希"}],
+      "tags": ["元数据"]
+    },
+    {
+      "id": "rag-023",
+      "query": "FAISS 在这个项目里使用什么相似度进行排序？",
+      "relevant": [{"source": "本地RAG.md", "contains": "FAISS 使用余弦相似度排序"}],
+      "tags": ["检索", "排序"]
+    },
+    {
+      "id": "rag-024",
+      "query": "为什么片段不能切得过短或过长？",
+      "relevant": [{"source": "本地RAG.md", "contains": "片段过短会丢失上下文，片段过长又可能混入多个主题并增加向量噪声"}],
+      "tags": ["切分", "质量"]
+    },
+    {
+      "id": "rag-025",
+      "query": "文档切分完全不设置重叠可能出现什么问题？",
+      "relevant": [{"source": "本地RAG.md", "contains": "没有重叠时，位于边界附近的定义容易被拆开"}],
+      "tags": ["切分", "重叠"]
+    },
+    {
+      "id": "rag-026",
+      "query": "项目是否为了评测又引入了第二套 Retriever？",
+      "relevant": [{"source": "本地RAG.md", "contains": "没有引入第二套 Retriever"}],
+      "tags": ["架构", "边界"]
+    },
+    {
+      "id": "rag-027",
+      "query": "RAG 人工标注为什么不能只记录期望文件名？",
+      "relevant": [{"source": "本地RAG.md", "contains": "必须同时声明能够定位答案的证据锚点"}],
+      "tags": ["评测", "标注"]
+    },
+    {
+      "id": "rag-028",
+      "query": "多答案检索用例如何避免被简单问题掩盖？",
+      "relevant": [{"source": "本地RAG.md", "contains": "再按用例宏平均"}],
+      "tags": ["评测", "指标"]
+    },
+    {
+      "id": "rag-029",
+      "query": "一个批次没有新增片段时还会保存索引吗？",
+      "relevant": [{"source": "本地RAG.md", "contains": "同一批次没有新片段时也不会发起无意义的保存操作"}],
+      "tags": ["索引", "幂等"]
+    },
+    {
+      "id": "rag-030",
+      "query": "SQLite 能否代替 FAISS 执行语义相似度搜索？",
+      "relevant": [{"source": "本地RAG.md", "contains": "SQLite 也不执行语义相似度搜索"}],
+      "tags": ["架构", "SQLite"]
+    },
+    {
+      "id": "rag-031",
+      "query": "离线回归除了复用切分和去重，还复用了哪些真实检索环节？",
+      "relevant": [{"source": "本地RAG.md", "contains": "真实 FAISS 建库和 Top-K 搜索"}],
+      "tags": ["评测", "FAISS"]
+    },
+    {
+      "id": "rag-032",
+      "query": "任务级本地检索结束后如何处理索引资源？",
+      "relevant": [{"source": "本地RAG.md", "contains": "检索完成后释放资源"}],
+      "tags": ["资源管理"]
+    },
+    {
+      "id": "rag-033",
+      "query": "工具型 Agent 收到研究主题后的第一个步骤是什么？",
+      "relevant": [{"source": "Agent执行.md", "contains": "先生成可执行的待办计划"}],
+      "tags": ["规划"]
+    },
+    {
+      "id": "rag-034",
+      "query": "工具执行结果如何参与 Agent 下一轮决策？",
+      "relevant": [{"source": "Agent执行.md", "contains": "工具执行结果会回到会话上下文供下一轮决策"}],
+      "tags": ["工具循环"]
+    },
+    {
+      "id": "rag-035",
+      "query": "Agent 通过什么信号判断研究循环已经完成？",
+      "relevant": [{"source": "Agent执行.md", "contains": "结束条件由 done 或报告工具明确给出"}],
+      "tags": ["终止条件"]
+    },
+    {
+      "id": "rag-036",
+      "query": "系统如何防止模型无限循环调用工具？",
+      "relevant": [{"source": "Agent执行.md", "contains": "保留最大循环次数，避免模型无限调用"}],
+      "tags": ["稳定性", "工具循环"]
+    },
+    {
+      "id": "rag-037",
+      "query": "主研究模型调用失败后会怎样处理？",
+      "relevant": [{"source": "Agent执行.md", "contains": "主模型失败时按照配置尝试备用模型"}],
+      "tags": ["模型路由", "容错"]
+    },
+    {
+      "id": "rag-038",
+      "query": "一次活动开始和结束为什么需要沿用同一个编号？",
+      "relevant": [{"source": "Agent执行.md", "contains": "开始和结束更新使用相同活动编号"}],
+      "tags": ["活动", "持久化"]
+    },
+    {
+      "id": "rag-039",
+      "query": "为什么一次工具调用不会在页面上重复显示为两条活动？",
+      "relevant": [{"source": "Agent执行.md", "contains": "不会把一次工具调用重复展示成两条记录"}],
+      "tags": ["活动", "去重"]
+    },
+    {
+      "id": "rag-040",
+      "query": "安全活动摘要明确排除了哪些原始或敏感内容？",
+      "relevant": [{"source": "Agent执行.md", "contains": "不包含工具参数、网页原文、模型响应或底层异常堆栈"}],
+      "tags": ["安全", "可观测"]
+    },
+    {
+      "id": "rag-041",
+      "query": "网页来源和本地片段为什么不直接塞进活动详情？",
+      "relevant": [{"source": "Agent执行.md", "contains": "网页来源与本地检索片段由 A2 作为独立证据保存"}],
+      "tags": ["证据", "活动"]
+    },
+    {
+      "id": "rag-042",
+      "query": "研究活动允许使用哪些执行状态？",
+      "relevant": [{"source": "Agent执行.md", "contains": "状态限定为运行中、成功、失败和已取消"}],
+      "tags": ["活动", "状态"]
+    },
+    {
+      "id": "rag-043",
+      "query": "研究活动分为哪三种类型？",
+      "relevant": [{"source": "Agent执行.md", "contains": "类型限定为规划、工具调用和本地检索"}],
+      "tags": ["活动", "类型"]
+    },
+    {
+      "id": "rag-044",
+      "query": "当前 Web 长任务采用什么并发运行方式？",
+      "relevant": [{"source": "任务稳定性.md", "contains": "单进程 AsyncIO 管理长任务"}],
+      "tags": ["AsyncIO", "任务"]
+    },
+    {
+      "id": "rag-045",
+      "query": "当前系统同一时间允许运行多少个活动研究任务？",
+      "relevant": [{"source": "任务稳定性.md", "contains": "同一时间只允许一个活动任务"}],
+      "tags": ["任务", "边界"]
+    },
+    {
+      "id": "rag-046",
+      "query": "应用重启后遗留的运行中任务会被标记成什么状态？",
+      "relevant": [{"source": "任务稳定性.md", "contains": "遗留的运行任务会被标记为已中断"}],
+      "tags": ["恢复", "状态"]
+    },
+    {
+      "id": "rag-047",
+      "query": "A2 将哪些网页信息和本地内容统一成研究证据？",
+      "relevant": [{"source": "证据与引用.md", "contains": "网页标题、URL、摘要和本地 RAG 文件片段统一为研究证据"}],
+      "tags": ["证据"]
+    },
+    {
+      "id": "rag-048",
+      "query": "本地资料引用在报告页面中会转换成什么？",
+      "relevant": [{"source": "证据与引用.md", "contains": "本地引用会转换为页面内证据卡片锚点"}],
+      "tags": ["引用", "本地证据"]
+    },
+    {
+      "id": "rag-049",
+      "query": "文件上传接口如何通过扩展名、单文件大小、文件总量和解析时间限制资源？",
+      "relevant": [{"source": "安全边界.md", "contains": "限制扩展名、单文件大小、文件总量和解析时间"}],
+      "tags": ["上传", "安全"]
+    },
+    {
+      "id": "rag-050",
+      "query": "react-markdown 渲染研究报告时为什么不启用原始 HTML？",
+      "relevant": [{"source": "安全边界.md", "contains": "前端使用 react-markdown 且不启用原始 HTML"}],
+      "tags": ["前端", "安全"]
     }
   ]
 }

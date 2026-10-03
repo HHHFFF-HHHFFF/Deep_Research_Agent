@@ -119,7 +119,7 @@ DeepSeek 可以负责推理和报告生成，同时使用 Qwen Embedding 构建 
 - 统一收集网页来源与本地检索片段，在 SQLite 中保存证据和引用核验结果，前端提供可跳转的来源面板与异常引用警告。
 - 使用独立 Embedding、内容哈希去重和 FAISS Top-K 4 检索，把本地资料作为不可信证据安全加入工具型 Agent。
 - 使用 React、TypeScript、Vite 与 Ant Design 完成响应式研究界面、上传限制、轮询恢复和安全 Markdown 报告展示。
-- 建立 15 条 RAG 人工标注集，以离线哈希向量复用真实 FAISS 并计算 Recall@K、HitRate@K、MRR@K；同时对 Agent 安全快照执行终态、活动、工具、证据和引用回归检查。
+- 建立 50 条 RAG 人工标注集，以离线哈希向量复用真实 FAISS 并计算 Recall@K、HitRate@K、MRR@K；同时对 Agent 安全快照执行终态、活动、工具、证据和引用回归检查。
 - 建立后端离线测试、Ruff、局部 mypy、编译检查以及前端类型检查、组件测试和生产构建门禁。
 
 ## 七、项目边界
