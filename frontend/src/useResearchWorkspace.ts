@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ApiClientError,
   cancelResearchTask,
+  confirmResearchTask,
   deleteResearchTask,
   getResearchReport,
   getResearchTask,
@@ -16,6 +17,12 @@ const DEFAULT_MAX_POLL_FAILURES = 3;
 const DEFAULT_HISTORY_LIMIT = 8;
 
 export function isTaskActive(task: ResearchTask | null): boolean {
+  return task?.status === "awaiting_confirmation"
+    || task?.status === "waiting"
+    || task?.status === "running";
+}
+
+function shouldPollTask(task: ResearchTask | null): boolean {
   return task?.status === "waiting" || task?.status === "running";
 }
 
@@ -65,6 +72,7 @@ export function useResearchWorkspace(options: ResearchWorkspaceOptions = {}) {
   const [loadingHistory, setLoadingHistory] = useState(true);
   const [loadingReport, setLoadingReport] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [confirmingPlan, setConfirmingPlan] = useState(false);
   const [deletingTaskId, setDeletingTaskId] = useState<string | null>(null);
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
   const [reportError, setReportError] = useState<string | null>(null);
@@ -137,7 +145,7 @@ export function useResearchWorkspace(options: ResearchWorkspaceOptions = {}) {
   }, [refreshTasks]);
 
   useEffect(() => {
-    if (!selectedTask || !isTaskActive(selectedTask) || pollingStopped) return;
+    if (!selectedTask || !shouldPollTask(selectedTask) || pollingStopped) return;
 
     let disposed = false;
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
@@ -155,7 +163,7 @@ export function useResearchWorkspace(options: ResearchWorkspaceOptions = {}) {
         failureCount = 0;
         setWorkspaceError(null);
         applyTask(task);
-        if (isTaskActive(task)) schedule();
+        if (shouldPollTask(task)) schedule();
       } catch (error) {
         if (disposed || (error instanceof Error && error.name === "AbortError")) return;
         failureCount += 1;
@@ -221,6 +229,23 @@ export function useResearchWorkspace(options: ResearchWorkspaceOptions = {}) {
     }
   }, [applyTask, cancelling, selectedTask]);
 
+  const confirmSelectedTask = useCallback(async (steps: string[]) => {
+    if (
+      !selectedTask
+      || selectedTask.status !== "awaiting_confirmation"
+      || confirmingPlan
+    ) return;
+    setConfirmingPlan(true);
+    setWorkspaceError(null);
+    try {
+      applyTask(await confirmResearchTask(selectedTask.id, steps));
+    } catch (error) {
+      setWorkspaceError(safeMessage(error, "确认研究计划失败"));
+    } finally {
+      if (mountedRef.current) setConfirmingPlan(false);
+    }
+  }, [applyTask, confirmingPlan, selectedTask]);
+
   const retrySelectedTask = useCallback(async () => {
     setWorkspaceError(null);
     setPollingStopped(false);
@@ -271,6 +296,7 @@ export function useResearchWorkspace(options: ResearchWorkspaceOptions = {}) {
     loadingHistory,
     loadingReport,
     cancelling,
+    confirmingPlan,
     deletingTaskId,
     workspaceError,
     reportError,
@@ -280,6 +306,7 @@ export function useResearchWorkspace(options: ResearchWorkspaceOptions = {}) {
     selectTask,
     refreshTasks,
     cancelSelectedTask,
+    confirmSelectedTask,
     deleteTask,
     retrySelectedTask,
   };

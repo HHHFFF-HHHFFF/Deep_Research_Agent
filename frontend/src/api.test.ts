@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import "./test/setup";
 import {
   cancelResearchTask,
+  confirmResearchTask,
   createResearchTask,
   deleteResearchTask,
   getResearchReport,
@@ -21,6 +22,8 @@ const taskResponse = {
   stage: "waiting",
   message: "研究任务已进入等待队列",
   error_message: null,
+  research_plan: ["明确研究问题", "检索相关证据", "生成研究报告"],
+  plan_confirmed: false,
   files: [],
   activities: [],
   evidence: [],
@@ -115,7 +118,7 @@ describe("研究接口客户端", () => {
     });
   });
 
-  it("支持最近任务、详情、取消、删除和报告接口", async () => {
+  it("支持最近任务、详情、计划确认、取消、删除和报告接口", async () => {
     const fetchMock = vi.mocked(fetch);
     fetchMock
       .mockResolvedValueOnce(
@@ -131,6 +134,12 @@ describe("研究接口客户端", () => {
         }),
       )
       .mockResolvedValueOnce(
+        new Response(JSON.stringify({ ...taskResponse, plan_confirmed: true }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
         new Response(JSON.stringify({ ...taskResponse, stage: "cancelling" }), {
           status: 200,
           headers: { "Content-Type": "application/json" },
@@ -141,6 +150,7 @@ describe("研究接口客户端", () => {
 
     expect(await listResearchTasks(5)).toHaveLength(1);
     expect((await getResearchTask("task-001")).id).toBe("task-001");
+    expect((await confirmResearchTask("task-001", ["检索资料", "生成报告"])).plan_confirmed).toBe(true);
     expect((await cancelResearchTask("task-001")).stage).toBe("cancelling");
     await deleteResearchTask("task-001");
     expect(await getResearchReport("task-001")).toBe("# 研究报告");
@@ -148,10 +158,14 @@ describe("研究接口客户端", () => {
     expect(fetchMock.mock.calls.map(([input]) => input)).toEqual([
       "/api/tasks?limit=5",
       "/api/tasks/task-001",
+      "/api/tasks/task-001/confirm",
       "/api/tasks/task-001/cancel",
       "/api/tasks/task-001",
       "/api/tasks/task-001/report",
     ]);
-    expect(fetchMock.mock.calls[3]?.[1]?.method).toBe("DELETE");
+    expect(fetchMock.mock.calls[2]?.[1]?.body).toBe(JSON.stringify({
+      steps: ["检索资料", "生成报告"],
+    }));
+    expect(fetchMock.mock.calls[4]?.[1]?.method).toBe("DELETE");
   });
 });

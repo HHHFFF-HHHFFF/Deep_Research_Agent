@@ -303,10 +303,10 @@ function App() {
                 icon={<ArrowRightOutlined />}
               >
                 {submitting
-                  ? "正在上传资料并创建任务"
+                  ? "正在上传资料并生成计划"
                   : workspaceState.hasActiveTask
-                    ? "当前研究正在进行"
-                    : "开始深度研究"}
+                    ? "请先处理当前研究任务"
+                    : "生成研究计划"}
               </Button>
             </Form>
 
@@ -331,10 +331,12 @@ function App() {
               report={workspaceState.report}
               loadingReport={workspaceState.loadingReport}
               cancelling={workspaceState.cancelling}
+              confirmingPlan={workspaceState.confirmingPlan}
               workspaceError={workspaceState.workspaceError}
               reportError={workspaceState.reportError}
               pollingStopped={workspaceState.pollingStopped}
               onCancel={() => void workspaceState.cancelSelectedTask()}
+              onConfirmPlan={workspaceState.confirmSelectedTask}
               onRetry={() => void workspaceState.retrySelectedTask()}
             />
             <RecentTasks

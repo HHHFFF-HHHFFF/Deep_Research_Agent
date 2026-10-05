@@ -24,6 +24,8 @@ function taskResponse(overrides: Partial<ResearchTask> = {}): ResearchTask {
     stage: "researching",
     message: "正在执行研究",
     error_message: null,
+    research_plan: ["明确研究问题", "检索相关证据", "生成研究报告"],
+    plan_confirmed: true,
     files: [],
     activities: [],
     evidence: [],

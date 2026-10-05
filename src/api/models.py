@@ -18,6 +18,7 @@ from src.application import (
 class TaskStatus(str, Enum):
     """研究任务可以持久化的生命周期状态。"""
 
+    AWAITING_CONFIRMATION = "awaiting_confirmation"
     WAITING = "waiting"
     RUNNING = "running"
     SUCCEEDED = "succeeded"
@@ -29,6 +30,7 @@ class TaskStatus(str, Enum):
 class TaskStage(str, Enum):
     """前端可展示的任务阶段。"""
 
+    AWAITING_CONFIRMATION = "awaiting_confirmation"
     WAITING = "waiting"
     INITIALIZING = "initializing"
     RESEARCHING = "researching"
@@ -73,6 +75,43 @@ class TaskCreateRequest(BaseModel):
         return value
 
 
+class TaskPlanConfirmRequest(BaseModel):
+    """用户确认或修改后的研究计划。"""
+
+    steps: list[str] = Field(min_length=2, max_length=8)
+
+    @field_validator("steps")
+    @classmethod
+    def normalize_steps(cls, value: list[str]) -> list[str]:
+        """清理计划步骤，并限制单步长度与重复内容。"""
+        normalized_steps: list[str] = []
+        for step in value:
+            normalized = step.strip()
+            if len(normalized) < 3:
+                raise ValueError("每个计划步骤至少需要 3 个字符")
+            if len(normalized) > 300:
+                raise ValueError("每个计划步骤不能超过 300 个字符")
+            if normalized in normalized_steps:
+                raise ValueError("研究计划不能包含重复步骤")
+            normalized_steps.append(normalized)
+        return normalized_steps
+
+
+def build_default_research_plan(*, has_files: bool) -> list[str]:
+    """根据是否包含本地资料生成无需额外模型调用的默认计划。"""
+    steps = ["拆解研究主题，明确核心问题、研究范围和判断标准"]
+    if has_files:
+        steps.append("检索上传资料，提取与研究主题相关的本地证据")
+    steps.extend(
+        [
+            "检索公开网页资料，记录可核验的来源与关键信息",
+            "交叉核对不同来源，处理冲突信息并归纳主要发现",
+            "按照证据组织结论，生成带来源引用的中文研究报告",
+        ]
+    )
+    return steps
+
+
 class UploadedFileResponse(BaseModel):
     """上传文件对外可见的安全元数据。"""
 
@@ -108,6 +147,8 @@ class TaskResponse(BaseModel):
     stage: TaskStage
     message: str
     error_message: str | None = None
+    research_plan: list[str] = Field(default_factory=list)
+    plan_confirmed: bool = False
     files: list[UploadedFileResponse] = Field(default_factory=list)
     activities: list[TaskActivityResponse] = Field(default_factory=list)
     evidence: list[ResearchEvidence] = Field(default_factory=list)

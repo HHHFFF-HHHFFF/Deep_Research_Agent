@@ -24,6 +24,7 @@ from src.api.models import (
     TaskActivityResponse,
     TaskCreateRequest,
     TaskListResponse,
+    TaskPlanConfirmRequest,
     TaskResponse,
     TaskStatus,
     UploadedFileResponse,
@@ -102,6 +103,7 @@ def _task_response(
     activities = database.list_task_activities(record.id)
     evidence = database.list_task_evidence(record.id)
     citation_validation = database.get_citation_validation(record.id)
+    plan = database.get_task_plan(record.id)
     return TaskResponse(
         id=record.id,
         task=record.task,
@@ -112,6 +114,12 @@ def _task_response(
         stage=record.stage,
         message=record.message,
         error_message=record.error_message,
+        research_plan=plan.steps if plan else [],
+        plan_confirmed=(
+            plan.confirmed
+            if plan is not None
+            else record.status is not TaskStatus.AWAITING_CONFIRMATION
+        ),
         files=[_file_response(file) for file in files],
         activities=[
             TaskActivityResponse(
@@ -301,6 +309,33 @@ def create_app(
     async def create_task(request: TaskCreateRequest) -> TaskResponse:
         try:
             record = await task_manager.create_task(request)
+        except TaskBusyError as error:
+            raise ApiError(409, "task_busy", str(error)) from error
+        except TaskStateError as error:
+            raise ApiError(409, "invalid_task_state", str(error)) from error
+        except UnknownFileError as error:
+            raise ApiError(400, "unknown_file", str(error)) from error
+        except TaskFileLimitError as error:
+            raise ApiError(400, "task_files_too_large", str(error)) from error
+        return _task_response(database, record)
+
+    @app.post(
+        "/api/tasks/{task_id}/confirm",
+        response_model=TaskResponse,
+        responses={
+            400: {"model": ErrorResponse},
+            404: {"model": ErrorResponse},
+            409: {"model": ErrorResponse},
+        },
+    )
+    async def confirm_task(
+        task_id: str,
+        request: TaskPlanConfirmRequest,
+    ) -> TaskResponse:
+        try:
+            record = await task_manager.confirm_task(task_id, request)
+        except TaskNotFoundError as error:
+            raise ApiError(404, "task_not_found", str(error)) from error
         except TaskBusyError as error:
             raise ApiError(409, "task_busy", str(error)) from error
         except TaskStateError as error:

@@ -18,6 +18,12 @@ class ResearchRequest(BaseModel):
         default_factory=list,
         description="本次研究允许读取的本地文档路径。",
     )
+    research_plan: list[str] = Field(
+        default_factory=list,
+        min_length=0,
+        max_length=8,
+        description="用户在执行前确认的研究计划；命令行调用时可以为空。",
+    )
     model_provider: Literal["qwen", "deepseek"] | None = Field(
         default=None,
         description="聊天模型提供方；为空时使用项目配置。",
@@ -61,6 +67,22 @@ class ResearchRequest(BaseModel):
             if normalized and normalized not in normalized_files:
                 normalized_files.append(normalized)
         return normalized_files
+
+    @field_validator("research_plan")
+    @classmethod
+    def normalize_research_plan(cls, value: list[str]) -> list[str]:
+        """清理研究计划，并拒绝过短、过长或重复步骤。"""
+        normalized_steps: list[str] = []
+        for step in value:
+            normalized = step.strip()
+            if len(normalized) < 3:
+                raise ValueError("研究计划步骤至少需要 3 个字符")
+            if len(normalized) > 300:
+                raise ValueError("研究计划步骤不能超过 300 个字符")
+            if normalized in normalized_steps:
+                raise ValueError("研究计划不能包含重复步骤")
+            normalized_steps.append(normalized)
+        return normalized_steps
 
     @field_validator("fallback_models")
     @classmethod

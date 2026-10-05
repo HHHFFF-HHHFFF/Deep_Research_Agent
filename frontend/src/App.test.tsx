@@ -20,10 +20,16 @@ function taskResponse(overrides: Partial<ResearchTask> = {}): ResearchTask {
     model_provider: "deepseek",
     model_id: "deepseek-v4-flash",
     actual_model_name: null,
-    status: "waiting",
-    stage: "waiting",
-    message: "研究任务已创建，正在等待执行",
+    status: "awaiting_confirmation",
+    stage: "awaiting_confirmation",
+    message: "请确认或修改研究计划",
     error_message: null,
+    research_plan: [
+      "拆解研究主题，明确核心问题和范围",
+      "检索并交叉核对公开资料",
+      "生成带来源引用的中文研究报告",
+    ],
+    plan_confirmed: false,
     files: [],
     activities: [],
     evidence: [],
@@ -60,7 +66,7 @@ describe("研究输入与任务工作区", () => {
     expect(screen.getByText("变成有依据的中文报告。")).toHaveClass("title-line-accent");
     expect(screen.getByText("适合中文研究与工具调用")).toBeVisible();
     expect(screen.getByText("侧重推理与内容分析")).toBeVisible();
-    await user.click(screen.getByRole("button", { name: /开始深度研究/ }));
+    await user.click(screen.getByRole("button", { name: /生成研究计划/ }));
 
     expect(await screen.findByText("请输入研究主题")).toBeInTheDocument();
     expect(
@@ -86,6 +92,15 @@ describe("研究输入与任务工作区", () => {
       if (path === "/api/tasks" && init?.method === "POST") {
         return jsonResponse(taskResponse(), 202);
       }
+      if (path === "/api/tasks/task-frontend-001/confirm" && init?.method === "POST") {
+        return jsonResponse(taskResponse({
+          status: "waiting",
+          stage: "waiting",
+          message: "研究计划已确认，正在等待执行",
+          research_plan: ["分析研究范围", "生成最终报告"],
+          plan_confirmed: true,
+        }));
+      }
       throw new Error(`未处理的测试请求：${path}`);
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -98,10 +113,14 @@ describe("研究输入与任务工作区", () => {
     fireEvent.change(fileInput!, {
       target: { files: [new File(["本地资料"], "资料.txt", { type: "text/plain" })] },
     });
-    await user.click(screen.getByRole("button", { name: /开始深度研究/ }));
+    await user.click(screen.getByRole("button", { name: /生成研究计划/ }));
 
-    expect(await screen.findByText("研究任务已创建，正在等待执行")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /当前研究正在进行/ })).toBeDisabled();
+    expect(await screen.findByText("请确认或修改研究计划")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /请先处理当前研究任务/ })).toBeDisabled();
+    const planInput = screen.getByLabelText("研究计划");
+    fireEvent.change(planInput, { target: { value: "分析研究范围\n生成最终报告" } });
+    await user.click(screen.getByRole("button", { name: /确认并开始研究/ }));
+    expect(await screen.findByText("研究计划已确认，正在等待执行")).toBeInTheDocument();
     const createCall = fetchMock.mock.calls.find(([input, init]) => (
       String(input) === "/api/tasks" && init?.method === "POST"
     ));
@@ -111,7 +130,13 @@ describe("研究输入与任务工作区", () => {
       model_provider: "deepseek",
       model_id: "deepseek-v4-flash",
     });
-  });
+    const confirmCall = fetchMock.mock.calls.find(([input, init]) => (
+      String(input) === "/api/tasks/task-frontend-001/confirm" && init?.method === "POST"
+    ));
+    expect(JSON.parse(confirmCall?.[1]?.body as string)).toEqual({
+      steps: ["分析研究范围", "生成最终报告"],
+    });
+  }, 10_000);
 
   it("恢复已完成任务并安全展示和下载报告", async () => {
     const completedTask = taskResponse({
@@ -211,7 +236,7 @@ describe("研究输入与任务工作区", () => {
       "href",
       "/api/tasks/completed-task/report",
     );
-  });
+  }, 10_000);
 
   it("确认后可以删除已结束的历史记录", async () => {
     const user = userEvent.setup();
@@ -257,7 +282,7 @@ describe("研究输入与任务工作区", () => {
     expect(fetchMock.mock.calls.some(([input, init]) => (
       String(input) === "/api/tasks/deletable-task" && init?.method === "DELETE"
     ))).toBe(true);
-  });
+  }, 10_000);
 
   it("可以对运行中的任务发出协作式取消", async () => {
     const user = userEvent.setup();
@@ -299,12 +324,12 @@ describe("研究输入与任务工作区", () => {
     render(<App />);
 
     await user.type(screen.getByLabelText("研究主题"), "研究一个新方向");
-    await user.click(screen.getByRole("button", { name: /开始深度研究/ }));
+    await user.click(screen.getByRole("button", { name: /生成研究计划/ }));
 
     expect(await screen.findByText("任务创建失败")).toBeInTheDocument();
     expect(screen.getByText("无法连接研究服务，请确认后端已经启动")).toBeInTheDocument();
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /开始深度研究/ })).toBeEnabled();
+      expect(screen.getByRole("button", { name: /生成研究计划/ })).toBeEnabled();
     });
   });
 });

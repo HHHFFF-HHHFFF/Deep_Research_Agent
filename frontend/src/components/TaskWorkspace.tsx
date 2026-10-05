@@ -8,8 +8,9 @@ import {
   LoadingOutlined,
   ReloadOutlined,
   ToolOutlined,
+  UnorderedListOutlined,
 } from "@ant-design/icons";
-import { Alert, Button, Empty, Skeleton, Tag, Typography } from "antd";
+import { Alert, Button, Empty, Input, Skeleton, Tag, Typography } from "antd";
 import { useEffect, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 
@@ -19,11 +20,11 @@ import {
   type TaskActivityStatus,
   type TaskStatus,
 } from "../api";
-import { isTaskActive } from "../useResearchWorkspace";
 
 const { Text, Title } = Typography;
 
 const STATUS_LABELS: Record<TaskStatus, string> = {
+  awaiting_confirmation: "待确认",
   waiting: "等待中",
   running: "运行中",
   succeeded: "已完成",
@@ -33,6 +34,7 @@ const STATUS_LABELS: Record<TaskStatus, string> = {
 };
 
 const STATUS_COLORS: Record<TaskStatus, string> = {
+  awaiting_confirmation: "blue",
   waiting: "gold",
   running: "cyan",
   succeeded: "green",
@@ -42,6 +44,7 @@ const STATUS_COLORS: Record<TaskStatus, string> = {
 };
 
 const STAGE_LABELS: Record<string, string> = {
+  awaiting_confirmation: "等待确认研究计划",
   waiting: "等待研究资源",
   initializing: "正在初始化研究组件",
   researching: "正在检索、分析并撰写报告",
@@ -68,7 +71,7 @@ function formatDuration(milliseconds: number): string {
 
 function useTaskDuration(task: ResearchTask | null): string {
   const [now, setNow] = useState(Date.now());
-  const active = isTaskActive(task);
+  const active = task?.status === "waiting" || task?.status === "running";
 
   useEffect(() => {
     if (!active) return;
@@ -78,6 +81,7 @@ function useTaskDuration(task: ResearchTask | null): string {
 
   return useMemo(() => {
     if (!task) return "0 秒";
+    if (task.status === "awaiting_confirmation") return "尚未开始";
     const start = new Date(task.started_at ?? task.created_at).getTime();
     const end = task.finished_at ? new Date(task.finished_at).getTime() : now;
     return formatDuration(end - start);
@@ -100,10 +104,12 @@ interface TaskWorkspaceProps {
   report: string | null;
   loadingReport: boolean;
   cancelling: boolean;
+  confirmingPlan: boolean;
   workspaceError: string | null;
   reportError: string | null;
   pollingStopped: boolean;
   onCancel: () => void;
+  onConfirmPlan: (steps: string[]) => Promise<void>;
   onRetry: () => void;
 }
 
@@ -112,13 +118,40 @@ export function TaskWorkspace({
   report,
   loadingReport,
   cancelling,
+  confirmingPlan,
   workspaceError,
   reportError,
   pollingStopped,
   onCancel,
+  onConfirmPlan,
   onRetry,
 }: TaskWorkspaceProps) {
   const duration = useTaskDuration(task);
+  const [planDraft, setPlanDraft] = useState("");
+  const [planError, setPlanError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setPlanDraft(task?.research_plan.join("\n") ?? "");
+    setPlanError(null);
+  }, [task?.id, task?.research_plan]);
+
+  const confirmPlan = async () => {
+    const steps = planDraft.split("\n").map((step) => step.trim()).filter(Boolean);
+    if (steps.length < 2 || steps.length > 8) {
+      setPlanError("研究计划需要包含 2～8 个非空步骤，每行一个步骤");
+      return;
+    }
+    if (steps.some((step) => step.length < 3 || step.length > 300)) {
+      setPlanError("每个步骤需要包含 3～300 个字符");
+      return;
+    }
+    if (new Set(steps).size !== steps.length) {
+      setPlanError("研究计划不能包含重复步骤");
+      return;
+    }
+    setPlanError(null);
+    await onConfirmPlan(steps);
+  };
 
   return (
     <section className="task-panel" aria-labelledby="task-panel-title">
@@ -165,10 +198,58 @@ export function TaskWorkspace({
                 </div>
               </div>
             )}
-            <div className={`stage-message${isTaskActive(task) ? " stage-message-active" : ""}`}>
+            <div className={`stage-message${
+              task.status === "waiting" || task.status === "running"
+                ? " stage-message-active"
+                : ""
+            }`}>
               <span className="stage-dot" aria-hidden="true" />
               <span>{task.message}</span>
             </div>
+
+            {task.status === "awaiting_confirmation" && (
+              <div className="plan-confirmation">
+                <div className="plan-confirmation-heading">
+                  <span className="plan-confirmation-icon" aria-hidden="true">
+                    <UnorderedListOutlined />
+                  </span>
+                  <div>
+                    <strong>执行前确认研究计划</strong>
+                    <small>每行代表一个步骤，可直接修改、增加或删除</small>
+                  </div>
+                </div>
+                <Input.TextArea
+                  aria-label="研究计划"
+                  value={planDraft}
+                  onChange={(event) => {
+                    setPlanDraft(event.target.value);
+                    setPlanError(null);
+                  }}
+                  autoSize={{ minRows: 5, maxRows: 10 }}
+                  maxLength={2400}
+                  disabled={confirmingPlan || cancelling}
+                />
+                {planError && <Text type="danger">{planError}</Text>}
+                <div className="plan-confirmation-actions">
+                  <Button
+                    type="primary"
+                    loading={confirmingPlan}
+                    disabled={confirmingPlan || cancelling}
+                    onClick={() => void confirmPlan()}
+                  >
+                    确认并开始研究
+                  </Button>
+                  <Button
+                    danger
+                    loading={cancelling}
+                    disabled={confirmingPlan || cancelling}
+                    onClick={onCancel}
+                  >
+                    取消任务
+                  </Button>
+                </div>
+              </div>
+            )}
 
             <div className="activity-section" aria-live="polite">
               <div className="activity-heading">
@@ -357,7 +438,7 @@ export function TaskWorkspace({
             )}
 
             <div className="task-actions">
-              {isTaskActive(task) && (
+              {(task.status === "waiting" || task.status === "running") && (
                 <Button
                   danger
                   icon={<CloseCircleOutlined />}

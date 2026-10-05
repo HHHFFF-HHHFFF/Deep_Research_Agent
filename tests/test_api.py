@@ -148,6 +148,25 @@ async def _wait_for_status(
     raise AssertionError(f"任务未在限定时间内进入状态 {expected}，最后状态：{latest}")
 
 
+async def _confirm_task(
+    client: httpx.AsyncClient,
+    task_id: str,
+    steps: list[str] | None = None,
+) -> httpx.Response:
+    """确认任务计划，让两阶段任务进入后台执行。"""
+    return await client.post(
+        f"/api/tasks/{task_id}/confirm",
+        json={
+            "steps": steps
+            or [
+                "明确研究问题和判断标准",
+                "检索并核对相关证据",
+                "生成带引用的中文研究报告",
+            ]
+        },
+    )
+
+
 @asynccontextmanager
 async def _app_client(app: FastAPI) -> AsyncIterator[httpx.AsyncClient]:
     """显式运行 lifespan，并使用 HTTPX 异步访问 ASGI 应用。"""
@@ -224,6 +243,19 @@ async def test_successful_task_can_be_polled_and_downloaded(
     created = await client.post("/api/tasks", json=_task_payload())
     assert created.status_code == 202
     task_id = created.json()["id"]
+    assert created.json()["status"] == TaskStatus.AWAITING_CONFIRMATION.value
+    assert created.json()["plan_confirmed"] is False
+    assert len(created.json()["research_plan"]) == 4
+
+    confirmed_steps = [
+        "界定本地 RAG 稳定性的研究范围",
+        "收集并交叉核对公开资料",
+        "生成带来源引用的中文报告",
+    ]
+    confirmed = await _confirm_task(client, task_id, confirmed_steps)
+    assert confirmed.status_code == 200
+    assert confirmed.json()["research_plan"] == confirmed_steps
+    assert confirmed.json()["plan_confirmed"] is True
 
     completed = await _wait_for_status(client, task_id, {TaskStatus.SUCCEEDED.value})
     assert completed["stage"] == "completed"
@@ -276,6 +308,7 @@ async def test_completed_task_can_be_deleted_with_its_private_files(
             json=_task_payload(file_ids=[file_id]),
         )
         task_id = created.json()["id"]
+        await _confirm_task(test_client, task_id)
         await _wait_for_status(test_client, task_id, {TaskStatus.SUCCEEDED.value})
 
         upload_path = settings.upload_dir / f"{file_id}.md"
@@ -310,6 +343,7 @@ async def test_active_task_cannot_be_deleted(tmp_path: Path) -> None:
     async with _app_client(app) as test_client:
         created = await test_client.post("/api/tasks", json=_task_payload())
         task_id = created.json()["id"]
+        await _confirm_task(test_client, task_id)
         await asyncio.wait_for(started.wait(), timeout=2)
 
         deleted = await test_client.delete(f"/api/tasks/{task_id}")
@@ -359,6 +393,8 @@ async def test_upload_is_validated_and_passed_as_server_path(
             json=_task_payload(file_ids=[file_info["id"]]),
         )
         assert created.status_code == 202
+        confirmed = await _confirm_task(test_client, created.json()["id"])
+        assert confirmed.status_code == 200
         await asyncio.wait_for(received.wait(), timeout=2)
         completed = await _wait_for_status(
             test_client,
@@ -497,6 +533,7 @@ async def test_only_one_task_runs_and_active_task_can_be_cancelled(
         first = await test_client.post("/api/tasks", json=_task_payload())
         assert first.status_code == 202
         task_id = first.json()["id"]
+        await _confirm_task(test_client, task_id)
         await asyncio.wait_for(started.wait(), timeout=2)
 
         duplicate = await test_client.post("/api/tasks", json=_task_payload())
@@ -532,6 +569,7 @@ async def test_runner_failure_is_persisted_without_report(tmp_path: Path) -> Non
     async with _app_client(app) as test_client:
         created = await test_client.post("/api/tasks", json=_task_payload())
         task_id = created.json()["id"]
+        await _confirm_task(test_client, task_id)
         failed = await _wait_for_status(
             test_client,
             task_id,
@@ -558,6 +596,7 @@ async def test_unexpected_runner_error_is_sanitized(tmp_path: Path) -> None:
     app = create_app(_settings(tmp_path, name="unexpected"), runner=unexpected_runner)
     async with _app_client(app) as test_client:
         created = await test_client.post("/api/tasks", json=_task_payload())
+        await _confirm_task(test_client, created.json()["id"])
         failed = await _wait_for_status(
             test_client,
             created.json()["id"],
@@ -598,6 +637,7 @@ async def test_startup_marks_stale_running_task_interrupted(tmp_path: Path) -> N
         model_provider="qwen",
         model_id="qwen3-max",
         file_ids=[],
+        research_plan=["检索资料", "生成报告"],
     )
     database.mark_running(stale.id)
     database.dispose()
@@ -610,6 +650,27 @@ async def test_startup_marks_stale_running_task_interrupted(tmp_path: Path) -> N
         assert recovered["status"] == TaskStatus.INTERRUPTED.value
     assert recovered["stage"] == "interrupted"
     assert recovered["finished_at"] is not None
+
+
+@pytest.mark.asyncio
+async def test_pending_plan_survives_restart_and_can_be_cancelled(
+    tmp_path: Path,
+) -> None:
+    """待确认计划不属于运行中任务，服务重启后应继续保留并可取消。"""
+    settings = _settings(tmp_path, name="pending-restart")
+    first_app = create_app(settings, runner=successful_runner)
+    async with _app_client(first_app) as test_client:
+        created = await test_client.post("/api/tasks", json=_task_payload())
+        task_id = created.json()["id"]
+        expected_plan = created.json()["research_plan"]
+
+    second_app = create_app(settings, runner=successful_runner)
+    async with _app_client(second_app) as test_client:
+        restored = await test_client.get(f"/api/tasks/{task_id}")
+        assert restored.json()["status"] == TaskStatus.AWAITING_CONFIRMATION.value
+        assert restored.json()["research_plan"] == expected_plan
+        cancelled = await test_client.post(f"/api/tasks/{task_id}/cancel")
+        assert cancelled.json()["status"] == TaskStatus.CANCELLED.value
 
 
 @pytest.mark.asyncio
@@ -633,6 +694,7 @@ async def test_shutdown_marks_active_task_interrupted(tmp_path: Path) -> None:
     async with _app_client(app) as test_client:
         created = await test_client.post("/api/tasks", json=_task_payload())
         task_id = created.json()["id"]
+        await _confirm_task(test_client, task_id)
         await asyncio.wait_for(started.wait(), timeout=2)
 
     database = ResearchDatabase(settings.database_path)

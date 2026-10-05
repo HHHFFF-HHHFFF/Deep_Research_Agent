@@ -194,6 +194,22 @@ async def _initialize_runtime(
     )
 
 
+def _build_agent_task(request: ResearchRequest) -> str:
+    """把用户确认的计划转换为 Agent 可执行、但不改变原主题的指令。"""
+    agent_task = request.task
+    if request.research_plan:
+        plan_text = "\n".join(
+            f"{index}. {step}"
+            for index, step in enumerate(request.research_plan, start=1)
+        )
+        agent_task = (
+            f"研究主题：\n{request.task}\n\n"
+            f"用户已确认的研究计划：\n{plan_text}\n\n"
+            "请按上述计划推进研究；可以细化子步骤，但不要跳过或替换已确认步骤。"
+        )
+    return agent_task
+
+
 async def _invoke_agent(
     request: ResearchRequest,
     ctx: SessionContext,
@@ -205,7 +221,7 @@ async def _invoke_agent(
 
     response = await acp(
         name="tool_calling",
-        input={"task": request.task, "files": request.files},
+        input={"task": _build_agent_task(request), "files": request.files},
         ctx=ctx,
         on_progress=on_progress,
     )

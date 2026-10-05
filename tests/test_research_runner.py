@@ -26,6 +26,21 @@ from src.research_runner import (
 from src.session.types import SessionContext
 
 
+def test_confirmed_plan_is_added_to_agent_task_without_changing_topic() -> None:
+    """确认后的步骤应进入 Agent 输入，同时保留结构化请求中的原始主题。"""
+    request = ResearchRequest(
+        task="比较两种 RAG 方案",
+        research_plan=["明确比较维度", "检索并核验证据", "生成结论报告"],
+    )
+
+    agent_task = research_runner._build_agent_task(request)
+
+    assert request.task == "比较两种 RAG 方案"
+    assert "研究主题：\n比较两种 RAG 方案" in agent_task
+    assert "1. 明确比较维度" in agent_task
+    assert "3. 生成结论报告" in agent_task
+
+
 @pytest.fixture
 def stub_runtime(monkeypatch: pytest.MonkeyPatch) -> dict[str, Any]:
     """替换真实组件初始化，并记录收到的运行参数。"""

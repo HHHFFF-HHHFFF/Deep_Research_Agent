@@ -12,8 +12,10 @@ from src.api.database import ResearchDatabase, StoredFileRecord, TaskRecord
 from src.api.models import (
     TERMINAL_TASK_STATUSES,
     TaskCreateRequest,
+    TaskPlanConfirmRequest,
     TaskStage,
     TaskStatus,
+    build_default_research_plan,
 )
 from src.application import (
     ResearchActivityStatus,
@@ -91,7 +93,7 @@ class ResearchTaskManager:
         return self._active_task_id
 
     async def create_task(self, request: TaskCreateRequest) -> TaskRecord:
-        """验证文件、持久化任务并启动后台执行。"""
+        """验证文件，并持久化一份等待用户确认的研究计划。"""
         async with self._lock:
             if self._shutting_down:
                 raise TaskStateError("服务正在关闭，暂时不能创建研究任务")
@@ -115,24 +117,58 @@ class ResearchTaskManager:
                 model_provider=request.model_provider,
                 model_id=request.model_id,
                 file_ids=file_ids,
-            )
-            self._cancel_event = asyncio.Event()
-            self._active_task_id = task_id
-            self._active_task = asyncio.create_task(
-                self._execute(record, files, self._cancel_event),
-                name=f"research-task-{task_id}",
+                research_plan=build_default_research_plan(has_files=bool(files)),
             )
             return record
 
+    async def confirm_task(
+        self,
+        task_id: str,
+        request: TaskPlanConfirmRequest,
+    ) -> TaskRecord:
+        """确认研究计划，并在没有其他活动任务时启动执行。"""
+        async with self._lock:
+            if self._shutting_down:
+                raise TaskStateError("服务正在关闭，暂时不能启动研究任务")
+            record = self.database.get_task(task_id)
+            if record is None:
+                raise TaskNotFoundError("研究任务不存在")
+            if record.status is not TaskStatus.AWAITING_CONFIRMATION:
+                raise TaskStateError("当前任务不处于计划确认阶段")
+            if self._active_task is not None and not self._active_task.done():
+                raise TaskBusyError("已有研究任务正在运行，请等待完成或先取消")
+
+            files = self.database.get_files(record.file_ids)
+            if len(files) != len(record.file_ids):
+                raise UnknownFileError("研究任务引用的上传文件已不存在")
+            if sum(file.size for file in files) > self.max_task_file_bytes:
+                limit_mb = self.max_task_file_bytes / (1024 * 1024)
+                raise TaskFileLimitError(
+                    f"单次研究使用的资料总量不能超过 {limit_mb:g} MB"
+                )
+
+            confirmed = self.database.confirm_task_plan(task_id, request.steps)
+            if confirmed is None:
+                raise TaskStateError("研究计划状态已经变化，请刷新后重试")
+            self._cancel_event = asyncio.Event()
+            self._active_task_id = task_id
+            self._active_task = asyncio.create_task(
+                self._execute(confirmed, files, self._cancel_event),
+                name=f"research-task-{task_id}",
+            )
+            return confirmed
+
     async def cancel_task(self, task_id: str) -> TaskRecord:
         """向当前活动任务发出协作式取消信号。"""
-        record = self.database.get_task(task_id)
-        if record is None:
-            raise TaskNotFoundError("研究任务不存在")
-        if record.status not in {TaskStatus.WAITING, TaskStatus.RUNNING}:
-            raise TaskStateError("当前任务状态不能取消")
-
         async with self._lock:
+            record = self.database.get_task(task_id)
+            if record is None:
+                raise TaskNotFoundError("研究任务不存在")
+            if record.status is TaskStatus.AWAITING_CONFIRMATION:
+                self.database.mark_cancelled(task_id)
+                return self.database.get_task(task_id) or record
+            if record.status not in {TaskStatus.WAITING, TaskStatus.RUNNING}:
+                raise TaskStateError("当前任务状态不能取消")
             if (
                 self._active_task_id != task_id
                 or self._active_task is None
@@ -199,12 +235,14 @@ class ResearchTaskManager:
 
         try:
             self.database.mark_running(task_id)
+            plan = self.database.get_task_plan(task_id)
             result = await self.runner(
                 ResearchRequest(
                     task=record.task,
                     files=[file.stored_path for file in files],
                     model_provider=record.model_provider,
                     model_id=record.model_id,
+                    research_plan=plan.steps if plan is not None else [],
                 ),
                 on_progress=on_progress,
                 cancel_event=cancel_event,

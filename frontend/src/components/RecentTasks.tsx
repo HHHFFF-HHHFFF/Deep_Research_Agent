@@ -7,6 +7,7 @@ import type { ResearchTask, TaskStatus } from "../api";
 const { Text, Title } = Typography;
 
 const STATUS_LABELS: Record<TaskStatus, string> = {
+  awaiting_confirmation: "待确认",
   waiting: "等待中",
   running: "运行中",
   succeeded: "已完成",
@@ -16,6 +17,7 @@ const STATUS_LABELS: Record<TaskStatus, string> = {
 };
 
 const STATUS_COLORS: Record<TaskStatus, string> = {
+  awaiting_confirmation: "blue",
   waiting: "gold",
   running: "cyan",
   succeeded: "green",
@@ -44,7 +46,9 @@ interface RecentTasksProps {
 }
 
 function isTaskActive(task: ResearchTask): boolean {
-  return task.status === "waiting" || task.status === "running";
+  return task.status === "awaiting_confirmation"
+    || task.status === "waiting"
+    || task.status === "running";
 }
 
 export function RecentTasks({
@@ -99,7 +103,7 @@ export function RecentTasks({
                 <small>{task.model_provider === "qwen" ? "Qwen" : "DeepSeek"}</small>
               </button>
               {isTaskActive(task) ? (
-                <Tooltip title="运行中的任务不能删除">
+                <Tooltip title="未结束的任务不能删除">
                   <Button
                     className="history-delete-button"
                     type="text"

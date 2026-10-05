@@ -43,6 +43,21 @@ def test_research_request_normalizes_and_validates_task() -> None:
         ResearchRequest(task="   ")
 
 
+def test_research_request_normalizes_confirmed_plan() -> None:
+    """研究计划应清理空白，并拒绝重复步骤。"""
+    request = ResearchRequest(
+        task="调研计划确认",
+        research_plan=["  明确研究范围  ", "检索可靠资料"],
+    )
+    assert request.research_plan == ["明确研究范围", "检索可靠资料"]
+
+    with pytest.raises(ValidationError, match="重复步骤"):
+        ResearchRequest(
+            task="调研计划确认",
+            research_plan=["检索可靠资料", "检索可靠资料"],
+        )
+
+
 def test_research_request_normalizes_files_and_model_options() -> None:
     """研究请求应清理重复文件，并校验模型覆盖项。"""
     request = ResearchRequest(

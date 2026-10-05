@@ -1,5 +1,6 @@
 export type ModelProvider = "qwen" | "deepseek";
 export type TaskStatus =
+  | "awaiting_confirmation"
   | "waiting"
   | "running"
   | "succeeded"
@@ -70,6 +71,8 @@ export interface ResearchTask {
   stage: string;
   message: string;
   error_message: string | null;
+  research_plan: string[];
+  plan_confirmed: boolean;
   files: UploadedFile[];
   activities: TaskActivity[];
   evidence: ResearchEvidence[];
@@ -200,6 +203,17 @@ export function getResearchTask(taskId: string, signal?: AbortSignal): Promise<R
 export function cancelResearchTask(taskId: string): Promise<ResearchTask> {
   return requestJson<ResearchTask>(`/api/tasks/${encodeURIComponent(taskId)}/cancel`, {
     method: "POST",
+  });
+}
+
+export function confirmResearchTask(
+  taskId: string,
+  steps: string[],
+): Promise<ResearchTask> {
+  return requestJson<ResearchTask>(`/api/tasks/${encodeURIComponent(taskId)}/confirm`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ steps }),
   });
 }
 

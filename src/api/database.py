@@ -78,6 +78,20 @@ class ResearchTaskRow(Base):
     )
 
 
+class TaskPlanRow(Base):
+    """研究任务在执行前由用户确认的计划。"""
+
+    __tablename__ = "task_plans"
+
+    task_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    steps: Mapped[list[str]] = mapped_column(JSON, default=list)
+    confirmed: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    confirmed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
 class UploadedFileRow(Base):
     """上传文件数据库记录。"""
 
@@ -162,6 +176,17 @@ class TaskRecord:
 
 
 @dataclass(frozen=True)
+class TaskPlanRecord:
+    """脱离数据库会话后仍可安全使用的研究计划。"""
+
+    task_id: str
+    steps: list[str]
+    confirmed: bool
+    created_at: datetime
+    confirmed_at: datetime | None
+
+
+@dataclass(frozen=True)
 class StoredFileRecord:
     """脱离数据库会话后仍可安全使用的文件记录。"""
 
@@ -214,6 +239,16 @@ def _file_record(row: UploadedFileRow) -> StoredFileRecord:
         stored_path=row.stored_path,
         size=row.size,
         created_at=_ensure_utc(row.created_at) or utc_now(),
+    )
+
+
+def _plan_record(row: TaskPlanRow) -> TaskPlanRecord:
+    return TaskPlanRecord(
+        task_id=row.task_id,
+        steps=list(row.steps or []),
+        confirmed=row.confirmed,
+        created_at=_ensure_utc(row.created_at) or utc_now(),
+        confirmed_at=_ensure_utc(row.confirmed_at),
     )
 
 
@@ -296,22 +331,54 @@ class ResearchDatabase:
         model_provider: str,
         model_id: str,
         file_ids: list[str],
+        research_plan: list[str],
     ) -> TaskRecord:
-        """创建等待执行的研究任务。"""
+        """创建等待用户确认计划的研究任务。"""
         row = ResearchTaskRow(
             id=task_id,
             task=task,
             model_provider=model_provider,
             model_id=model_id,
             file_ids=file_ids,
-            status=TaskStatus.WAITING.value,
-            stage=TaskStage.WAITING.value,
-            message="研究任务正在等待执行",
+            status=TaskStatus.AWAITING_CONFIRMATION.value,
+            stage=TaskStage.AWAITING_CONFIRMATION.value,
+            message="请确认或修改研究计划",
+            created_at=utc_now(),
+        )
+        plan_row = TaskPlanRow(
+            task_id=task_id,
+            steps=research_plan,
+            confirmed=False,
             created_at=utc_now(),
         )
         with self._session_factory.begin() as session:
             session.add(row)
+            session.add(plan_row)
         return _task_record(row)
+
+    def get_task_plan(self, task_id: str) -> TaskPlanRecord | None:
+        """读取任务的研究计划。"""
+        with self._session_factory() as session:
+            row = session.get(TaskPlanRow, task_id)
+            return _plan_record(row) if row else None
+
+    def confirm_task_plan(self, task_id: str, steps: list[str]) -> TaskRecord | None:
+        """保存用户确认的计划，并把任务切换为等待执行。"""
+        with self._session_factory.begin() as session:
+            task_row = session.get(ResearchTaskRow, task_id)
+            plan_row = session.get(TaskPlanRow, task_id)
+            if task_row is None or plan_row is None:
+                return None
+            if task_row.status != TaskStatus.AWAITING_CONFIRMATION.value:
+                return None
+            confirmed_at = utc_now()
+            plan_row.steps = steps
+            plan_row.confirmed = True
+            plan_row.confirmed_at = confirmed_at
+            task_row.status = TaskStatus.WAITING.value
+            task_row.stage = TaskStage.WAITING.value
+            task_row.message = "研究计划已确认，正在等待执行"
+        return _task_record(task_row)
 
     def get_task(self, task_id: str) -> TaskRecord | None:
         """读取一个研究任务。"""
@@ -518,6 +585,7 @@ class ResearchDatabase:
                     CitationValidationRow.task_id == task_id
                 )
             )
+            session.execute(delete(TaskPlanRow).where(TaskPlanRow.task_id == task_id))
             session.delete(task_row)
             for file_id in orphan_file_ids:
                 file_row = session.get(UploadedFileRow, file_id)
